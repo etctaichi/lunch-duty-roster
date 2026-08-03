@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 type Order = { id: string; name: string; shop: string; meal: string; qty: number };
 type Person = { id: string; name: string };
+type SkipRange = { id: string; start: string; end: string };
 
 const initialPeople: Person[] = [
   "林 詩 怡","陳 怡 樺","游 家 林","王 煜 詔","林 賢 明","陳 恩 平","汪 柏 州","蔡 哲 霖","吳 建 成","李 權 峻","賀 冠 傑","許 峻 銘","王 介 武","陳 英 孜","王 鈺 棋","邱 宇 昕"
@@ -34,27 +35,41 @@ export default function Home() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [people, setPeople] = useState<Person[]>(initialPeople);
   const [shops, setShops] = useState(initialShops);
-  const [skipWeeks, setSkipWeeks] = useState<string[]>([]);
+  const [skipRanges, setSkipRanges] = useState<SkipRange[]>([]);
   const [anchor, setAnchor] = useState("2025-10-27");
   const [notice, setNotice] = useState("");
+  const [settingsReady, setSettingsReady] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("lunch-admin-settings-v1");
-    if (saved) try { const s=JSON.parse(saved); setPeople(s.people||initialPeople); setShops(s.shops||initialShops); setSkipWeeks(s.skipWeeks||[]); setAnchor(s.anchor||"2025-10-27"); } catch {}
+    if (saved) try {
+      const s=JSON.parse(saved);
+      setPeople(s.people||initialPeople); setShops(s.shops||initialShops); setAnchor(s.anchor||"2025-10-27");
+      if(Array.isArray(s.skipRanges)) setSkipRanges(s.skipRanges);
+      else if(Array.isArray(s.skipWeeks)) setSkipRanges(s.skipWeeks.map((x:string,i:number)=>({id:`legacy-${i}`,start:x,end:x})));
+    } catch {}
+    setSettingsReady(true);
   }, []);
-  useEffect(() => { localStorage.setItem("lunch-admin-settings-v1", JSON.stringify({people,shops,skipWeeks,anchor})); }, [people,shops,skipWeeks,anchor]);
+  useEffect(() => {
+    if(settingsReady) localStorage.setItem("lunch-admin-settings-v1", JSON.stringify({people,shops,skipRanges,anchor}));
+  }, [people,shops,skipRanges,anchor,settingsReady]);
 
   const duty = useMemo(() => {
+    if (!settingsReady) return "載入中…";
     if (!people.length) return "尚未設定";
     const target = mondayOf(new Date(date+"T12:00:00"));
     const start = mondayOf(new Date(anchor+"T12:00:00"));
     let weeks = Math.floor((target.getTime()-start.getTime())/604800000);
-    const skipped = skipWeeks.filter(x => {
-      const m=mondayOf(new Date(x+"T12:00:00")); return m>=start && m<=target;
-    }).length;
-    weeks -= skipped;
+    const skippedMondays=new Set<string>();
+    skipRanges.forEach(range=>{
+      let m=mondayOf(new Date(range.start+"T12:00:00"));
+      const end=mondayOf(new Date(range.end+"T12:00:00"));
+      while(m<=end){skippedMondays.add(ymd(m));m=new Date(m.getFullYear(),m.getMonth(),m.getDate()+7)}
+    });
+    if(skippedMondays.has(ymd(target))) return "本週暫停輪值";
+    weeks -= [...skippedMondays].filter(x=>{const m=new Date(x+"T12:00:00");return m>=start&&m<target}).length;
     return people[((weeks % people.length) + people.length) % people.length]?.name || "尚未設定";
-  }, [date, people, skipWeeks, anchor]);
+  }, [date, people, skipRanges, anchor, settingsReady]);
 
   const shopSummary = useMemo(() => orders.reduce<Record<string,number>>((a,o)=>(a[o.shop]=(a[o.shop]||0)+o.qty,a),{}),[orders]);
   const total = orders.reduce((n,o)=>n+o.qty,0);
@@ -137,7 +152,7 @@ export default function Home() {
       <div className="settings-grid"><section className="card"><div className="card-head"><div><h2>輪值順序</h2><p>每人輪值一週，從週一開始</p></div><button className="text-btn" onClick={()=>setPeople(p=>[...p,{id:crypto.randomUUID(),name:"新同仁"}])}>＋ 新增人員</button></div>
       <label className="field"><span>輪值起算週一</span><input type="date" value={anchor} onChange={e=>setAnchor(e.target.value)}/></label>
       <div className="roster">{people.map((p,i)=><div className="roster-row" key={p.id}><span className="num">{i+1}</span><input value={p.name} onChange={e=>setPeople(a=>a.map(x=>x.id===p.id?{...x,name:e.target.value}:x))}/><div><button onClick={()=>move(i,-1)} aria-label="往上">↑</button><button onClick={()=>move(i,1)} aria-label="往下">↓</button><button className="delete" onClick={()=>setPeople(a=>a.filter(x=>x.id!==p.id))} aria-label="刪除">×</button></div></div>)}</div></section>
-      <aside className="card"><h2>跳過日期</h2><p>遇到春節或整週休假，加入其中任一天，該週不輪值。</p><div className="skip-add"><input type="date" id="skipDate"/><button onClick={()=>{const e=document.getElementById("skipDate") as HTMLInputElement;if(e.value&&!skipWeeks.includes(e.value))setSkipWeeks(x=>[...x,e.value])}}>加入</button></div>{skipWeeks.length===0?<div className="empty">目前沒有跳過日期</div>:skipWeeks.map(x=><div className="skip-row" key={x}><span>{labelDate(x)} 當週</span><button onClick={()=>setSkipWeeks(a=>a.filter(v=>v!==x))}>移除</button></div>)}</aside></div>
+      <aside className="card"><h2>跳過日期區間</h2><p>設定春節或連續休假期間；跨到兩週時，兩週都會停止輪值且不重複計算。</p><div className="skip-range-add"><label><span>起始日</span><input type="date" id="skipStart"/></label><label><span>結束日</span><input type="date" id="skipEnd"/></label><button onClick={()=>{const s=document.getElementById("skipStart") as HTMLInputElement,e=document.getElementById("skipEnd") as HTMLInputElement;if(s.value&&e.value){const start=s.value<=e.value?s.value:e.value,end=s.value<=e.value?e.value:s.value;setSkipRanges(a=>[...a,{id:crypto.randomUUID(),start,end}]);s.value="";e.value=""}}}>加入區間</button></div>{skipRanges.length===0?<div className="empty">目前沒有跳過日期</div>:skipRanges.map(x=><div className="skip-row" key={x.id}><span>{labelDate(x.start)} ～ {labelDate(x.end)}</span><button onClick={()=>setSkipRanges(a=>a.filter(v=>v.id!==x.id))}>移除</button></div>)}</aside></div>
     </section>}
 
     {tab==="shops" && <section className="page narrow"><div className="title-row"><div><p className="eyebrow">VENDORS</p><h1>店家管理</h1><p className="subtitle">增減可辨識的店名，貼上資料時仍會保留清單外的新店家。</p></div></div><section className="card shop-manager"><div className="card-head"><div><h2>店家清單</h2><p>{shops.length} 間店家</p></div><button className="text-btn" onClick={()=>setShops(a=>[...a,"新店家"])}>＋ 新增店家</button></div>{shops.map((s,i)=><div className="shop-edit" key={i}><span className="shop-dot"></span><input value={s} onChange={e=>setShops(a=>a.map((x,j)=>j===i?e.target.value:x))}/><button onClick={()=>setShops(a=>a.filter((_,j)=>j!==i))}>刪除</button></div>)}</section></section>}
