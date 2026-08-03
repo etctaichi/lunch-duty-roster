@@ -76,6 +76,32 @@ export default function Home() {
     await navigator.clipboard.writeText(`今日午餐 ${labelDate(date)}\n值日生：${duty}\n\n${details}\n\n店家統計：${sums}\n共 ${total} 份`);
     setNotice("已複製 LINE 公告"); setTimeout(()=>setNotice(""),2500);
   }
+  function downloadLineTable() {
+    const width=1100, rowH=58, headerH=190, summaryH=120;
+    const canvas=document.createElement("canvas");
+    canvas.width=width; canvas.height=headerH+rowH*(orders.length+1)+summaryH;
+    const c=canvas.getContext("2d"); if(!c) return;
+    c.fillStyle="#f6f3eb"; c.fillRect(0,0,canvas.width,canvas.height);
+    c.fillStyle="#275f51"; c.fillRect(0,0,width,130);
+    c.fillStyle="#ffffff"; c.font='700 38px "Microsoft JhengHei", sans-serif'; c.fillText("今日午餐",48,58);
+    c.font='500 24px "Microsoft JhengHei", sans-serif'; c.fillText(labelDate(date),48,98);
+    c.fillStyle="#dcebe6"; c.font='600 24px "Microsoft JhengHei", sans-serif'; c.fillText(`值日生｜${duty.replaceAll(" ","")}`,760,78);
+    const xs=[40,235,430,960]; const heads=["姓名","店家","餐點","數量"];
+    c.fillStyle="#e6eee9"; c.fillRect(32,155,width-64,rowH);
+    c.fillStyle="#275f51"; c.font='700 22px "Microsoft JhengHei", sans-serif'; heads.forEach((h,i)=>c.fillText(h,xs[i]+12,191));
+    orders.forEach((o,i)=>{
+      const y=155+rowH*(i+1); c.fillStyle=i%2===0?"#ffffff":"#f8faf8"; c.fillRect(32,y,width-64,rowH);
+      c.fillStyle="#17342d"; c.font='500 21px "Microsoft JhengHei", sans-serif';
+      const meal=o.meal.length>22?o.meal.slice(0,21)+"…":o.meal;
+      [o.name.replaceAll(" ",""),o.shop,meal,String(o.qty)].forEach((v,j)=>c.fillText(v,xs[j]+12,y+36));
+      c.strokeStyle="#dfe5df"; c.beginPath(); c.moveTo(32,y+rowH); c.lineTo(width-32,y+rowH); c.stroke();
+    });
+    const sy=headerH+rowH*(orders.length+1)+28;
+    c.fillStyle="#275f51"; c.font='700 23px "Microsoft JhengHei", sans-serif'; c.fillText(`店家統計｜${Object.entries(shopSummary).map(([s,n])=>`${s} ${n}份`).join("　")}`,48,sy);
+    c.fillStyle="#e88958"; c.font='700 25px "Microsoft JhengHei", sans-serif'; c.fillText(`合計 ${total} 份`,48,sy+48);
+    const link=document.createElement("a"); link.download=`午餐公告-${date}.png`; link.href=canvas.toDataURL("image/png"); link.click();
+    setNotice("已下載 LINE 表格圖片"); setTimeout(()=>setNotice(""),2500);
+  }
   function move(i:number, dir:number){ const n=i+dir;if(n<0||n>=people.length)return;const next=[...people];[next[i],next[n]]=[next[n],next[i]];setPeople(next); }
 
   return <main>
@@ -98,7 +124,7 @@ export default function Home() {
         <aside className="duty-card"><p>本週值日生</p><div className="duty-name"><span className="person-icon">人</span><strong>{duty.replaceAll(" ","")}</strong></div><div className="week">{labelDate(ymd(mondayOf(new Date(date+"T12:00:00"))))} 起</div><p className="duty-note">每週一自動輪替，週一至週五由同一人值日。</p><button className="outline" onClick={()=>setTab("roster")}>查看排班設定</button></aside>
       </div>
       {orders.length>0 && <div className="result-grid"><section className="card results"><div className="card-head"><div><p className="eyebrow">PREVIEW</p><h2>今日午餐・{labelDate(date)}</h2></div><span className="count">{total} 份</span></div><div className="table-wrap"><table><thead><tr><th>姓名</th><th>店家</th><th>餐點</th><th>數量</th></tr></thead><tbody>{orders.map((o,i)=><tr key={i}><td>{o.name}</td><td><span className="shop-pill">{o.shop}</span></td><td>{o.meal}</td><td>{o.qty}</td></tr>)}</tbody></table></div></section>
-      <aside className="card summary"><p className="eyebrow">SHOP SUMMARY</p><h2>店家統計</h2>{Object.entries(shopSummary).map(([s,n])=><div className="sum-row" key={s}><span>{s}</span><strong>{n} 份</strong></div>)}<div className="total"><span>合計</span><strong>{total} 份</strong></div><button className="line-btn" onClick={copyNotice}>複製 LINE 公告</button><p className="shot-tip">此區塊也適合直接截圖公布</p></aside></div>}
+      <aside className="card summary"><p className="eyebrow">SHOP SUMMARY</p><h2>店家統計</h2>{Object.entries(shopSummary).map(([s,n])=><div className="sum-row" key={s}><span>{s}</span><strong>{n} 份</strong></div>)}<div className="total"><span>合計</span><strong>{total} 份</strong></div><button className="line-btn" onClick={downloadLineTable}>下載 LINE 表格圖片</button><button className="copy-btn" onClick={copyNotice}>複製純文字公告</button><p className="shot-tip">下載後可直接將 PNG 圖片傳到 LINE</p></aside></div>}
     </section>}
 
     {tab==="roster" && <section className="page narrow"><div className="title-row"><div><p className="eyebrow">WEEKLY ROSTER</p><h1>值日排班</h1><p className="subtitle">拖曳概念改為明確的上下調整，手機也好操作。</p></div></div>
