@@ -160,17 +160,34 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     if (!people.length) return "尚未設定";
     const target = mondayOf(new Date(date + "T12:00:00"));
     const start = mondayOf(new Date(anchor + "T12:00:00"));
-    let weeks = Math.floor((target.getTime() - start.getTime()) / 604800000);
+    
+    // Find all weeks that are completely skipped (all 5 working days fall inside skipRanges)
     const skippedMondays = new Set<string>();
-    skipRanges.forEach(range => {
-      let m = mondayOf(new Date(range.start + "T12:00:00"));
-      const end = mondayOf(new Date(range.end + "T12:00:00"));
-      while (m <= end) {
-        skippedMondays.add(ymd(m));
-        m = new Date(m.getFullYear(), m.getMonth(), m.getDate() + 7);
+    const minTime = Math.min(start.getTime(), target.getTime());
+    const maxTime = Math.max(start.getTime(), target.getTime());
+    let current = new Date(minTime);
+    // Scan from start to target (and a bit beyond to be safe)
+    const limit = new Date(maxTime + 604800000);
+
+    while (current <= limit) {
+      let isFullySkipped = true;
+      for (let i = 0; i < 5; i++) {
+        const d = new Date(current.getTime() + i * 86400000);
+        const dStr = ymd(d);
+        const insideRange = skipRanges.some(r => dStr >= r.start && dStr <= r.end);
+        if (!insideRange) {
+          isFullySkipped = false;
+          break;
+        }
       }
-    });
+      if (isFullySkipped) {
+        skippedMondays.add(ymd(current));
+      }
+      current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 7);
+    }
+
     if (skippedMondays.has(ymd(target))) return "本週暫停輪值";
+    let weeks = Math.floor((target.getTime() - start.getTime()) / 604800000);
     weeks -= [...skippedMondays].filter(x => { const m = new Date(x + "T12:00:00"); return m >= start && m < target; }).length;
     return people[((weeks % people.length) + people.length) % people.length]?.name || "尚未設定";
   }, [date, people, skipRanges, anchor, settingsReady]);
