@@ -5,6 +5,7 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "workers_dev": true,
   "main": "./worker/index.ts",
   "assets": {
     "directory": "dist/client",
