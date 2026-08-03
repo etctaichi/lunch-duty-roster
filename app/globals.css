@@ -38,6 +38,9 @@
 .admin-quick{background:#fff1e5;color:#c85a28;border:1px solid #f6cfb8}
 .user-quick{background:#f0f5f2;color:#356053;border:1px solid var(--mint)}
 .admin-quick:hover{background:#ffe6d5}
-.user-quick:hover{background:#e2ece7}
+.dev-field-label{text-align:left;font-size:12px;font-weight:700;color:var(--muted);margin-top:4px}
+.dev-field-label code{color:var(--green);font-family:ui-monospace,monospace}
+.login-error-msg{background:#fff0f0;border:1px solid #f9c6c6;color:#c02b2b;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;margin-bottom:10px}
+
 
 

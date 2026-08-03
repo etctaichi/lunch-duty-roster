@@ -35,9 +35,13 @@ interface LunchAppProps {
   adminEmail: string;
 }
 
+const LOCAL_ADMIN_PASSCODE = "taichi2026";
+
 export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   const [currentUser, setCurrentUser] = useState<ChatGPTUser | null>(initialUser);
   const [customInputEmail, setCustomInputEmail] = useState(adminEmail);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [tab, setTab] = useState<"orders"|"roster"|"shops">("orders");
   const [date, setDate] = useState(ymd(new Date()));
   const [raw, setRaw] = useState(sample);
@@ -178,7 +182,15 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     setNotice("已重設這台裝置的本機設定"); setTimeout(() => setNotice(""), 3000);
   }
 
-  function handleDevMockLogin(email: string) {
+  function handleDevMockLogin(email: string, passwordAttempt?: string) {
+    if (email.toLowerCase() === adminEmail.toLowerCase()) {
+      const pwd = passwordAttempt !== undefined ? passwordAttempt : adminPasswordInput;
+      if (pwd !== LOCAL_ADMIN_PASSCODE) {
+        setLoginError(`❌ 管理員密碼錯誤！請輸入正確密碼 (預設: ${LOCAL_ADMIN_PASSCODE})`);
+        return;
+      }
+    }
+    setLoginError("");
     const userObj: ChatGPTUser = {
       userId: `dev-${email}`,
       displayName: email,
@@ -199,6 +211,8 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
 
   if (!currentUser) {
     const signInUrl = chatGPTSignInPath("/");
+    const isTargetingAdmin = customInputEmail.toLowerCase() === adminEmail.toLowerCase();
+
     return (
       <main className="login-wrapper">
         <div className="login-card">
@@ -210,47 +224,54 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
           </div>
 
           <a href={signInUrl} className="login-btn">
-            🔑 使用 Email 帳號登入 (線上正式版)
+            🔑 使用 Email 帳號登入 (線上正式版 OAuth)
           </a>
 
           <div className="dev-login-box">
-            <div className="dev-divider"><span>或本地開發測試登入</span></div>
+            <div className="dev-divider"><span>或本地開發測試驗證登入</span></div>
+            {loginError && <div className="login-error-msg">{loginError}</div>}
             <div className="dev-form">
+              <label className="dev-field-label">測試 Email 帳號：</label>
               <input
                 type="email"
                 value={customInputEmail}
-                onChange={e => setCustomInputEmail(e.target.value)}
+                onChange={e => { setCustomInputEmail(e.target.value); setLoginError(""); }}
                 placeholder="輸入測試 Email 帳號"
                 className="dev-input"
               />
+              {isTargetingAdmin && (
+                <>
+                  <label className="dev-field-label">管理員驗證密碼 (預設: <code>{LOCAL_ADMIN_PASSCODE}</code>)：</label>
+                  <input
+                    type="password"
+                    value={adminPasswordInput}
+                    onChange={e => { setAdminPasswordInput(e.target.value); setLoginError(""); }}
+                    placeholder="請輸入管理員密碼"
+                    className="dev-input"
+                  />
+                </>
+              )}
               <button
                 type="button"
                 className="dev-submit-btn"
                 onClick={() => customInputEmail && handleDevMockLogin(customInputEmail)}
               >
-                💻 本地測試登入
+                💻 通過驗證登入
               </button>
             </div>
             <div className="dev-quick-btns">
               <button
                 type="button"
-                className="quick-btn admin-quick"
-                onClick={() => handleDevMockLogin(adminEmail)}
-              >
-                👑 以管理員登入
-              </button>
-              <button
-                type="button"
                 className="quick-btn user-quick"
                 onClick={() => handleDevMockLogin("user@example.com")}
               >
-                👤 以一般使用者登入
+                👤 以一般使用者登入 (免密碼)
               </button>
             </div>
           </div>
 
           <p className="login-note">
-            已整合 Email 身分識別機制，提供線上與本地測試登入體驗。
+            已整合 Email 帳號與管理員密碼雙重驗證機制。
           </p>
         </div>
       </main>
@@ -465,7 +486,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
               onChange={e => setShops(a => a.map((x, j) => j === i ? e.target.value : x))}
             />
             {isAdmin && (
-              <button onClick={() => setShops(a => a.filter((_, j) => j !== i))}>刪除</button>
+              <button onClick={() => setShops(a => a.filter((_, j) => j !== i))} aria-label="刪除">刪除</button>
             )}
           </div>
         ))}
