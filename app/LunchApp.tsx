@@ -75,23 +75,64 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   }, [initialUser]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("lunch-admin-settings-v1");
-    if (saved) try {
-      const s = JSON.parse(saved);
-      setPeople(s.people || initialPeople);
-      setShops(s.shops || initialShops);
-      setAnchor(s.anchor || "2025-10-27");
-      if (Array.isArray(s.skipRanges)) setSkipRanges(s.skipRanges);
-      else if (Array.isArray(s.skipWeeks)) setSkipRanges(s.skipWeeks.map((x: string, i: number) => ({ id: `legacy-${i}`, start: x, end: x })));
-    } catch {}
-    setSettingsReady(true);
+    fetch("/api/settings")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setPeople(data.people);
+          setShops(data.shops);
+          setSkipRanges(data.skipRanges);
+          setAnchor(data.anchor);
+        }
+        setSettingsReady(true);
+      })
+      .catch(() => {
+        // Fallback to local storage if API is offline
+        const saved = localStorage.getItem("lunch-admin-settings-v1");
+        if (saved) try {
+          const s = JSON.parse(saved);
+          setPeople(s.people || initialPeople);
+          setShops(s.shops || initialShops);
+          setAnchor(s.anchor || "2025-10-27");
+          if (Array.isArray(s.skipRanges)) setSkipRanges(s.skipRanges);
+        } catch {}
+        setSettingsReady(true);
+      });
   }, []);
 
-  useEffect(() => {
-    if (settingsReady) {
-      localStorage.setItem("lunch-admin-settings-v1", JSON.stringify({ people, shops, skipRanges, anchor }));
+  async function saveAllSettings(updatedPeople = people, updatedShops = shops, updatedSkip = skipRanges, updatedAnchor = anchor) {
+    if (!currentUser || !isAdmin) return;
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requesterEmail: currentUser.email,
+          people: updatedPeople,
+          shops: updatedShops,
+          skipRanges: updatedSkip,
+          anchor: updatedAnchor,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "儲存設定失敗");
+      } else {
+        setNotice("設定已同步至雲端");
+        setTimeout(() => setNotice(""), 2000);
+      }
+    } catch (err) {
+      // Offline fallback: save to localStorage
+      localStorage.setItem("lunch-admin-settings-v1", JSON.stringify({
+        people: updatedPeople,
+        shops: updatedShops,
+        skipRanges: updatedSkip,
+        anchor: updatedAnchor,
+      }));
+      setNotice("已暫存至本地瀏覽器");
+      setTimeout(() => setNotice(""), 2000);
     }
-  }, [people, shops, skipRanges, anchor, settingsReady]);
+  }
 
   const isAdmin = useMemo(() => {
     return !!currentUser && currentUser.email.toLowerCase() === adminEmail.toLowerCase();
@@ -328,14 +369,15 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     if (!isAdmin) return;
     const n = i + dir; if (n < 0 || n >= people.length) return;
     const next = [...people];[next[i], next[n]] = [next[n], next[i]]; setPeople(next);
+    saveAllSettings(next);
   }
 
-  function resetLocalSettings() {
+  async function resetLocalSettings() {
     if (!isAdmin) return;
-    if (!window.confirm("確定要清除這台裝置保存的名單、店家、起算日與休假區間嗎？")) return;
-    localStorage.removeItem("lunch-admin-settings-v1");
+    if (!window.confirm("確定要將所有人名、店家、起算日與休假區間還原為系統預設值嗎？")) return;
     setPeople(initialPeople); setShops(initialShops); setSkipRanges(defaultSkipRanges); setAnchor("2025-10-27");
-    setNotice("已重設這台裝置的本機設定"); setTimeout(() => setNotice(""), 3000);
+    await saveAllSettings(initialPeople, initialShops, defaultSkipRanges, "2025-10-27");
+    setNotice("已還原為系統預設設定"); setTimeout(() => setNotice(""), 3000);
   }
 
   // ──── LOGIN PAGE ────
@@ -466,25 +508,36 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     {tab === "roster" && <section className="page narrow">
       <div className="title-row">
         <div><p className="eyebrow">WEEKLY ROSTER</p><h1>值日排班</h1><p className="subtitle">輪值人員清單與休假區間管理。</p></div>
-        {isAdmin && <button className="reset-btn" onClick={resetLocalSettings}>重設本機設定</button>}
+        {isAdmin && <button className="reset-btn" onClick={resetLocalSettings}>還原系統預設值</button>}
       </div>
       {!isAdmin && <div className="admin-lock-banner">🔒 值日排班僅限管理員 (<strong>{adminEmail}</strong>) 修改，您目前為檢視模式。</div>}
       <div className="settings-grid">
         <section className="card">
           <div className="card-head">
             <div><h2>輪值順序</h2><p>每人輪值一週，從週一開始</p></div>
-            {isAdmin && <button className="text-btn" onClick={() => setPeople(p => [...p, { id: crypto.randomUUID(), name: "新同仁" }])}>＋ 新增人員</button>}
+            {isAdmin && <button className="text-btn" onClick={() => {
+              const next = [...people, { id: crypto.randomUUID(), name: "新同仁" }];
+              setPeople(next);
+              saveAllSettings(next);
+            }}>＋ 新增人員</button>}
           </div>
-          <label className="field"><span>輪值起算週一</span><input type="date" value={anchor} disabled={!isAdmin} onChange={e => setAnchor(e.target.value)} /></label>
+          <label className="field"><span>輪值起算週一</span><input type="date" value={anchor} disabled={!isAdmin} onChange={e => {
+            setAnchor(e.target.value);
+            saveAllSettings(people, shops, skipRanges, e.target.value);
+          }} /></label>
           <div className="roster">
             {people.map((p, i) => (
               <div className="roster-row" key={p.id}>
                 <span className="num">{i + 1}</span>
-                <input value={p.name} disabled={!isAdmin} onChange={e => setPeople(a => a.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))} />
+                <input value={p.name} disabled={!isAdmin} onChange={e => setPeople(a => a.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))} onBlur={() => saveAllSettings(people)} />
                 {isAdmin && <div>
                   <button onClick={() => move(i, -1)} aria-label="往上">↑</button>
                   <button onClick={() => move(i, 1)} aria-label="往下">↓</button>
-                  <button className="delete" onClick={() => setPeople(a => a.filter(x => x.id !== p.id))} aria-label="刪除">×</button>
+                  <button className="delete" onClick={() => {
+                    const next = people.filter(x => x.id !== p.id);
+                    setPeople(next);
+                    saveAllSettings(next);
+                  }} aria-label="刪除">×</button>
                 </div>}
               </div>
             ))}
@@ -502,7 +555,9 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
               if (s.value && e.value) {
                 const start = s.value <= e.value ? s.value : e.value;
                 const end = s.value <= e.value ? e.value : s.value;
-                setSkipRanges(a => [...a, { id: crypto.randomUUID(), start, end }]);
+                const next = [...skipRanges, { id: crypto.randomUUID(), start, end }];
+                setSkipRanges(next);
+                saveAllSettings(people, shops, next, anchor);
                 s.value = ""; e.value = "";
               }
             }}>加入區間</button>
@@ -512,7 +567,11 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
             : skipRanges.map(x => (
               <div className="skip-row" key={x.id}>
                 <span>{labelDate(x.start)} ～ {labelDate(x.end)}</span>
-                {isAdmin && <button onClick={() => setSkipRanges(a => a.filter(v => v.id !== x.id))}>移除</button>}
+                {isAdmin && <button onClick={() => {
+                  const next = skipRanges.filter(v => v.id !== x.id);
+                  setSkipRanges(next);
+                  saveAllSettings(people, shops, next, anchor);
+                }}>移除</button>}
               </div>
             ))}
         </aside>
@@ -581,13 +640,21 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
       <section className="card shop-manager">
         <div className="card-head">
           <div><h2>店家清單</h2><p>{shops.length} 間店家</p></div>
-          {isAdmin && <button className="text-btn" onClick={() => setShops(a => [...a, "新店家"])}>＋ 新增店家</button>}
+          {isAdmin && <button className="text-btn" onClick={() => {
+            const next = [...shops, "新店家"];
+            setShops(next);
+            saveAllSettings(people, next);
+          }}>＋ 新增店家</button>}
         </div>
         {shops.map((s, i) => (
           <div className="shop-edit" key={i}>
             <span className="shop-dot"></span>
-            <input value={s} disabled={!isAdmin} onChange={e => setShops(a => a.map((x, j) => j === i ? e.target.value : x))} />
-            {isAdmin && <button onClick={() => setShops(a => a.filter((_, j) => j !== i))}>刪除</button>}
+            <input value={s} disabled={!isAdmin} onChange={e => setShops(a => a.map((x, j) => j === i ? e.target.value : x))} onBlur={() => saveAllSettings(people, shops)} />
+            {isAdmin && <button onClick={() => {
+              const next = shops.filter((_, j) => j !== i);
+              setShops(next);
+              saveAllSettings(people, next);
+            }}>刪除</button>}
           </div>
         ))}
       </section>
