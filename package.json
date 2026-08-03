@@ -9,6 +9,7 @@
     "dev": "npx vinext dev",
     "build": "npx vinext build",
     "start": "npx vinext start",
+    "deploy": "npx vinext deploy",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
