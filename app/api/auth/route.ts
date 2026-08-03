@@ -3,9 +3,21 @@ import { getDb, initDb } from "../../../db";
 import { allowedUsers } from "../../../db/schema";
 
 const DEFAULT_ADMIN = "etctaichi@gmail.com";
-const DEFAULT_PASSWORD = "etc14101850";
 
-async function ensureDefaultAdmin(db: any) {
+async function getDefaultPassword(): Promise<string> {
+  try {
+    const { env } = await import("cloudflare:workers");
+    if (env.DEFAULT_PASSWORD) {
+      return env.DEFAULT_PASSWORD;
+    }
+  } catch {}
+  if (typeof process !== "undefined" && process.env.DEFAULT_PASSWORD) {
+    return process.env.DEFAULT_PASSWORD;
+  }
+  throw new Error("DEFAULT_PASSWORD environment variable or secret is not set.");
+}
+
+async function ensureDefaultAdmin(db: any, defaultPassword: string) {
   try {
     const admin = await db
       .select()
@@ -18,7 +30,7 @@ async function ensureDefaultAdmin(db: any) {
       await db.insert(allowedUsers).values({
         email: DEFAULT_ADMIN,
         role: "admin",
-        password: DEFAULT_PASSWORD,
+        password: defaultPassword,
       });
     }
   } catch (err) {
@@ -33,7 +45,8 @@ export async function POST(request: Request) {
 
     await initDb();
     const db = getDb();
-    await ensureDefaultAdmin(db);
+    const defaultPassword = await getDefaultPassword();
+    await ensureDefaultAdmin(db, defaultPassword);
 
     if (action === "login") {
       const { email, password } = body;
@@ -154,7 +167,7 @@ export async function POST(request: Request) {
       await db.insert(allowedUsers).values({
         email: targetEmail,
         role: role || "viewer",
-        password: role === "admin" ? (password || DEFAULT_PASSWORD) : null,
+        password: role === "admin" ? (password || defaultPassword) : null,
       });
 
       const list = await db.select().from(allowedUsers);
