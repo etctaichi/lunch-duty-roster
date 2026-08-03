@@ -77,28 +77,34 @@ export default function Home() {
     setNotice("已複製 LINE 公告"); setTimeout(()=>setNotice(""),2500);
   }
   function downloadLineTable() {
-    const width=1100, rowH=58, headerH=190, summaryH=120;
+    const width=900, rowH=76, headerH=170, tableHeadH=58;
+    const shopRows=Math.ceil(Object.keys(shopSummary).length/2);
+    const summaryH=112+shopRows*52;
     const canvas=document.createElement("canvas");
-    canvas.width=width; canvas.height=headerH+rowH*(orders.length+1)+summaryH;
+    canvas.width=width; canvas.height=headerH+tableHeadH+rowH*orders.length+summaryH;
     const c=canvas.getContext("2d"); if(!c) return;
-    c.fillStyle="#f6f3eb"; c.fillRect(0,0,canvas.width,canvas.height);
-    c.fillStyle="#275f51"; c.fillRect(0,0,width,130);
-    c.fillStyle="#ffffff"; c.font='700 38px "Microsoft JhengHei", sans-serif'; c.fillText("今日午餐",48,58);
-    c.font='500 24px "Microsoft JhengHei", sans-serif'; c.fillText(labelDate(date),48,98);
-    c.fillStyle="#dcebe6"; c.font='600 24px "Microsoft JhengHei", sans-serif'; c.fillText(`值日生｜${duty.replaceAll(" ","")}`,760,78);
-    const xs=[40,235,430,960]; const heads=["姓名","店家","餐點","數量"];
-    c.fillStyle="#e6eee9"; c.fillRect(32,155,width-64,rowH);
-    c.fillStyle="#275f51"; c.font='700 22px "Microsoft JhengHei", sans-serif'; heads.forEach((h,i)=>c.fillText(h,xs[i]+12,191));
+    c.fillStyle="#f6f3eb"; c.fillRect(0,0,width,canvas.height);
+    c.fillStyle="#275f51"; c.fillRect(0,0,width,headerH);
+    c.fillStyle="#ffffff"; c.font='700 42px "Microsoft JhengHei", sans-serif'; c.fillText("今日午餐",40,58);
+    c.font='500 25px "Microsoft JhengHei", sans-serif'; c.fillText(labelDate(date),40,103);
+    c.fillStyle="#e88958"; c.fillRect(40,126,280,5);
+    c.fillStyle="#dcebe6"; c.font='700 27px "Microsoft JhengHei", sans-serif'; c.textAlign="right"; c.fillText(`值日生｜${duty.replaceAll(" ","")}`,860,92); c.textAlign="left";
+    const xs=[32,170,292,804]; const heads=["姓名","店家","餐點","數量"];
+    c.fillStyle="#dcebe6"; c.fillRect(24,headerH+12,width-48,tableHeadH-12);
+    c.fillStyle="#275f51"; c.font='700 22px "Microsoft JhengHei", sans-serif'; heads.forEach((h,i)=>c.fillText(h,xs[i]+10,headerH+44));
     orders.forEach((o,i)=>{
-      const y=155+rowH*(i+1); c.fillStyle=i%2===0?"#ffffff":"#f8faf8"; c.fillRect(32,y,width-64,rowH);
+      const y=headerH+tableHeadH+rowH*i; c.fillStyle=i%2===0?"#ffffff":"#f8faf8"; c.fillRect(24,y,width-48,rowH);
       c.fillStyle="#17342d"; c.font='500 21px "Microsoft JhengHei", sans-serif';
-      const meal=o.meal.length>22?o.meal.slice(0,21)+"…":o.meal;
-      [o.name.replaceAll(" ",""),o.shop,meal,String(o.qty)].forEach((v,j)=>c.fillText(v,xs[j]+12,y+36));
-      c.strokeStyle="#dfe5df"; c.beginPath(); c.moveTo(32,y+rowH); c.lineTo(width-32,y+rowH); c.stroke();
+      c.fillText(o.name.replaceAll(" ",""),xs[0]+10,y+43); c.fillText(o.shop,xs[1]+10,y+43); c.fillText(String(o.qty),xs[3]+10,y+43);
+      const first=o.meal.slice(0,24), second=o.meal.length>24?o.meal.slice(24,46)+(o.meal.length>46?"…":""):"";
+      c.fillText(first,xs[2]+10,y+(second?30:43)); if(second){c.font='500 18px "Microsoft JhengHei", sans-serif';c.fillText(second,xs[2]+10,y+57)}
+      c.strokeStyle="#dfe5df"; c.beginPath(); c.moveTo(24,y+rowH); c.lineTo(width-24,y+rowH); c.stroke();
     });
-    const sy=headerH+rowH*(orders.length+1)+28;
-    c.fillStyle="#275f51"; c.font='700 23px "Microsoft JhengHei", sans-serif'; c.fillText(`店家統計｜${Object.entries(shopSummary).map(([s,n])=>`${s} ${n}份`).join("　")}`,48,sy);
-    c.fillStyle="#e88958"; c.font='700 25px "Microsoft JhengHei", sans-serif'; c.fillText(`合計 ${total} 份`,48,sy+48);
+    const sy=headerH+tableHeadH+rowH*orders.length;
+    c.fillStyle="#edf3f0"; c.fillRect(24,sy+20,width-48,summaryH-40);
+    c.fillStyle="#275f51"; c.font='700 25px "Microsoft JhengHei", sans-serif'; c.fillText("店家統計",44,sy+58);
+    Object.entries(shopSummary).forEach(([s,n],i)=>{const col=i%2,row=Math.floor(i/2);c.font='600 21px "Microsoft JhengHei", sans-serif';c.fillStyle="#17342d";c.fillText(`${s}　${n} 份`,44+col*410,sy+102+row*52)});
+    c.fillStyle="#e88958"; c.font='700 28px "Microsoft JhengHei", sans-serif'; c.textAlign="right"; c.fillText(`合計 ${total} 份`,856,sy+58); c.textAlign="left";
     const link=document.createElement("a"); link.download=`午餐公告-${date}.png`; link.href=canvas.toDataURL("image/png"); link.click();
     setNotice("已下載 LINE 表格圖片"); setTimeout(()=>setNotice(""),2500);
   }
