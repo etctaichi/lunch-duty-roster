@@ -1,25 +1,26 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "site-creator-vinext-starter",
-  "compatibility_date": "2026-08-03",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
-  "workers_dev": true,
-  "main": "./worker/index.ts",
-  "assets": {
-    "directory": "dist/client",
-    "not_found_handling": "none",
-    "binding": "ASSETS"
-  },
-  "images": {
-    "binding": "IMAGES"
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "lunch-db",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
-    }
-  ]
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "site-creator-vinext-starter",
+	"compatibility_date": "2026-08-03",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"workers_dev": true,
+	"main": "./worker/index.ts",
+	"assets": {
+		"directory": "dist/client",
+		"not_found_handling": "none",
+		"binding": "ASSETS"
+	},
+	"images": {
+		"binding": "IMAGES"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "lunch-db",
+			"database_id": "fe290ca2-1392-471c-bd62-77390db1e499",
+			"migrations_dir": "drizzle"
+		}
+	]
 }
