@@ -511,7 +511,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
         <div><p className="eyebrow">WEEKLY ROSTER</p><h1>值日排班</h1><p className="subtitle">輪值人員清單與休假區間管理。</p></div>
         {isAdmin && <button className="reset-btn" onClick={resetLocalSettings}>還原系統預設值</button>}
       </div>
-      {!isAdmin && <div className="admin-lock-banner">🔒 值日排班僅限管理員 (<strong>{adminEmail}</strong>) 修改，您目前為檢視模式。</div>}
+      {!isAdmin && <div className="admin-lock-banner">🔒 值日排班僅限管理員修改，您目前為檢視模式。</div>}
       <div className="settings-grid">
         <section className="card">
           <div className="card-head">
@@ -616,7 +616,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
 
           <aside className="card">
             <h2>修改管理員密碼</h2>
-            <p>更改管理員帳號 ({adminEmail}) 的登入密碼。</p>
+            <p>更改管理員帳號 ({currentUser?.email}) 的登入密碼。</p>
             <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
               <label className="field" style={{ margin: "0" }}>
                 <span>目前密碼</span>
@@ -637,7 +637,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
       <div className="title-row">
         <div><p className="eyebrow">VENDORS</p><h1>店家管理</h1><p className="subtitle">可辨識的常訂店家清單。</p></div>
       </div>
-      {!isAdmin && <div className="admin-lock-banner">🔒 店家清單僅限管理員 (<strong>{adminEmail}</strong>) 修改，您目前為檢視模式。</div>}
+      {!isAdmin && <div className="admin-lock-banner">🔒 店家清單僅限管理員修改，您目前為檢視模式。</div>}
       <section className="card shop-manager">
         <div className="card-head">
           <div><h2>店家清單</h2><p>{shops.length} 間店家</p></div>
