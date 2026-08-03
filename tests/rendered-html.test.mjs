@@ -29,6 +29,5 @@ test("server-renders the Lunch Duty Roster app", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>午餐小管家｜訂餐統計與值日排班<\/title>/i);
-  assert.match(html, /管理員帳號：/);
-  assert.match(html, /etctaichi@gmail\.com/);
+  assert.match(html, /一般使用者與管理員輸入 Email 即可登入/);
 });

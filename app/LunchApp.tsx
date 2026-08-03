@@ -12,6 +12,9 @@ const initialPeople: Person[] = [
   "林 詩 怡","陳 怡 樺","游 家 林","王 煜 詔","林 賢 明","陳 恩 平","汪 柏 州","蔡 哲 霖","吳 建 成","李 權 峻","賀 冠 傑","許 峻 銘","王 介 武","陳 英 孜","王 鈺 棋","邱 宇 昕"
 ].map((name, i) => ({ id: String(i + 1), name }));
 const initialShops = ["P劉媽", "L八方", "B華園", "I菩提心", "R今今", "F健康園"];
+const defaultSkipRanges: SkipRange[] = [
+  { id: "default-cny-2026", start: "2026-02-16", end: "2026-02-22" }
+];
 const sample = `571\t林 詩 怡\tP劉媽\t菜飯(7樣配菜)\t1
 612\t陳 國 賢\tF健康園\t每日特餐\t1
 960\t陳 怡 樺\tF健康園\t滷排骨\t1
@@ -49,7 +52,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [people, setPeople] = useState<Person[]>(initialPeople);
   const [shops, setShops] = useState(initialShops);
-  const [skipRanges, setSkipRanges] = useState<SkipRange[]>([]);
+  const [skipRanges, setSkipRanges] = useState<SkipRange[]>(defaultSkipRanges);
   const [anchor, setAnchor] = useState("2025-10-27");
   const [notice, setNotice] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
@@ -217,7 +220,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     if (!isAdmin) return;
     if (!window.confirm("確定要清除這台裝置保存的名單、店家、起算日與休假區間嗎？")) return;
     localStorage.removeItem("lunch-admin-settings-v1");
-    setPeople(initialPeople); setShops(initialShops); setSkipRanges([]); setAnchor("2025-10-27");
+    setPeople(initialPeople); setShops(initialShops); setSkipRanges(defaultSkipRanges); setAnchor("2025-10-27");
     setNotice("已重設這台裝置的本機設定"); setTimeout(() => setNotice(""), 3000);
   }
 
@@ -264,8 +267,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
           </form>
 
           <div className="login-meta">
-            <p>管理員帳號：<code>{adminEmail}</code></p>
-            <p>一般使用者輸入 Email 即可直接登入</p>
+            <p>一般使用者與管理員輸入 Email 即可登入</p>
           </div>
         </div>
       </main>
