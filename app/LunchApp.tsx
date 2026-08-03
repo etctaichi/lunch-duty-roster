@@ -46,7 +46,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [loginError, setLoginError] = useState("");
 
-  const [tab, setTab] = useState<"orders"|"roster"|"shops">("orders");
+  const [tab, setTab] = useState<"orders"|"roster"|"admin">("orders");
   const [date, setDate] = useState(ymd(new Date()));
   const [raw, setRaw] = useState(sample);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -438,7 +438,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
       <nav>
         <button className={tab === "orders" ? "active" : ""} onClick={() => setTab("orders")}>今日訂餐</button>
         <button className={tab === "roster" ? "active" : ""} onClick={() => setTab("roster")}>值日排班</button>
-        <button className={tab === "shops" ? "active" : ""} onClick={() => setTab("shops")}>店家管理</button>
+        {isAdmin && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}>帳號管理</button>}
       </nav>
       <div className="admin">
         <span className="user-email">{currentUser.email}</span>
@@ -577,88 +577,63 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
             ))}
         </aside>
       </div>
-
-      {isAdmin && (
-        <div className="settings-grid admin-users-section" style={{ marginTop: "24px" }}>
-          <section className="card">
-            <div className="card-head">
-              <div><h2>系統存取名單 (Email 限制)</h2><p>只有名單內的使用者才可以登入系統</p></div>
-            </div>
-            <form onSubmit={handleAddUser} className="skip-range-add" style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr auto", gap: "9px", margin: "0 0 20px" }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                <span style={{ fontSize: "11px", fontWeight: "bold", color: "var(--muted)" }}>Email 帳號</span>
-                <input type="email" value={newAllowedEmail} onChange={e => setNewAllowedEmail(e.target.value)} placeholder="user@gmail.com" required style={{ border: "1px solid var(--line)", borderRadius: "8px", padding: "10px" }} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                <span style={{ fontSize: "11px", fontWeight: "bold", color: "var(--muted)" }}>身分角色</span>
-                <select value={newAllowedRole} onChange={e => setNewAllowedRole(e.target.value as any)} style={{ border: "1px solid var(--line)", borderRadius: "8px", padding: "10px", height: "41px", background: "#fff", font: "inherit", fontWeight: "700" }}>
-                  <option value="viewer">一般使用者 (唯讀)</option>
-                  <option value="admin">管理員 (可修改)</option>
-                </select>
-              </label>
-              <button type="submit" style={{ alignSelf: "flex-end", height: "41px", border: "0", background: "var(--green)", color: "#fff", borderRadius: "8px", padding: "0 18px", fontWeight: "800", cursor: "pointer" }}>新增</button>
-            </form>
-            
-            <div className="roster" style={{ maxHeight: "250px", overflowY: "auto" }}>
-              {dbUsers.map((u) => (
-                <div className="roster-row" key={u.email} style={{ justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span className="num" style={{ width: "auto", fontSize: "11px", background: u.role === "admin" ? "#fff1e5" : "#edf3f0", color: u.role === "admin" ? "#c85a28" : "var(--green)", border: u.role === "admin" ? "1px solid #f6cfb8" : "1px solid var(--mint)", padding: "2px 6px", borderRadius: "4px", fontWeight: "800" }}>{u.role === "admin" ? "管理員" : "使用者"}</span>
-                    <span style={{ fontWeight: "700" }}>{u.email}</span>
-                  </div>
-                  {u.email !== adminEmail.toLowerCase() && (
-                    <button className="delete" onClick={() => handleDeleteUser(u.email)} style={{ color: "#b66b59", fontWeight: "800" }}>移除</button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <aside className="card">
-            <h2>修改管理員密碼</h2>
-            <p>更改管理員帳號 ({currentUser?.email}) 的登入密碼。</p>
-            <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
-              <label className="field" style={{ margin: "0" }}>
-                <span>目前密碼</span>
-                <input type="password" value={changePasswordOld} onChange={e => setChangePasswordOld(e.target.value)} required placeholder="請輸入目前密碼" style={{ border: "0", background: "transparent", font: "inherit", color: "var(--ink)", fontWeight: "700" }} />
-              </label>
-              <label className="field" style={{ margin: "0" }}>
-                <span>新密碼</span>
-                <input type="password" value={changePasswordNew} onChange={e => setChangePasswordNew(e.target.value)} required placeholder="新密碼 (至少 4 位)" style={{ border: "0", background: "transparent", font: "inherit", color: "var(--ink)", fontWeight: "700" }} />
-              </label>
-              <button type="submit" style={{ border: "0", background: "var(--orange)", color: "#fff", borderRadius: "8px", padding: "11px", fontWeight: "800", cursor: "pointer", marginTop: "8px" }}>確認修改</button>
-            </form>
-          </aside>
-        </div>
-      )}
     </section>}
 
-    {tab === "shops" && <section className="page narrow">
+    {tab === "admin" && isAdmin && <section className="page narrow">
       <div className="title-row">
-        <div><p className="eyebrow">VENDORS</p><h1>店家管理</h1><p className="subtitle">可辨識的常訂店家清單。</p></div>
+        <div><p className="eyebrow">ADMINISTRATION</p><h1>帳號管理</h1><p className="subtitle">管理系統存取名單與修改管理員密碼。</p></div>
       </div>
-      {!isAdmin && <div className="admin-lock-banner">🔒 店家清單僅限管理員修改，您目前為檢視模式。</div>}
-      <section className="card shop-manager">
-        <div className="card-head">
-          <div><h2>店家清單</h2><p>{shops.length} 間店家</p></div>
-          {isAdmin && <button className="text-btn" onClick={() => {
-            const next = [...shops, "新店家"];
-            setShops(next);
-            saveAllSettings(people, next);
-          }}>＋ 新增店家</button>}
-        </div>
-        {shops.map((s, i) => (
-          <div className="shop-edit" key={i}>
-            <span className="shop-dot"></span>
-            <input value={s} disabled={!isAdmin} onChange={e => setShops(a => a.map((x, j) => j === i ? e.target.value : x))} onBlur={() => saveAllSettings(people, shops)} />
-            {isAdmin && <button onClick={() => {
-              const next = shops.filter((_, j) => j !== i);
-              setShops(next);
-              saveAllSettings(people, next);
-            }}>刪除</button>}
+      <div className="settings-grid admin-users-section">
+        <section className="card">
+          <div className="card-head">
+            <div><h2>系統存取名單 (Email 限制)</h2><p>只有名單內的使用者才可以登入系統</p></div>
           </div>
-        ))}
-      </section>
+          <form onSubmit={handleAddUser} className="skip-range-add" style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr auto", gap: "9px", margin: "0 0 20px" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+              <span style={{ fontSize: "11px", fontWeight: "bold", color: "var(--muted)" }}>Email 帳號</span>
+              <input type="email" value={newAllowedEmail} onChange={e => setNewAllowedEmail(e.target.value)} placeholder="user@gmail.com" required style={{ border: "1px solid var(--line)", borderRadius: "8px", padding: "10px" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+              <span style={{ fontSize: "11px", fontWeight: "bold", color: "var(--muted)" }}>身分角色</span>
+              <select value={newAllowedRole} onChange={e => setNewAllowedRole(e.target.value as any)} style={{ border: "1px solid var(--line)", borderRadius: "8px", padding: "10px", height: "41px", background: "#fff", font: "inherit", fontWeight: "700" }}>
+                <option value="viewer">一般使用者 (唯讀)</option>
+                <option value="admin">管理員 (可修改)</option>
+              </select>
+            </label>
+            <button type="submit" style={{ alignSelf: "flex-end", height: "41px", border: "0", background: "var(--green)", color: "#fff", borderRadius: "8px", padding: "0 18px", fontWeight: "800", cursor: "pointer" }}>新增</button>
+          </form>
+          
+          <div className="roster" style={{ maxHeight: "250px", overflowY: "auto" }}>
+            {dbUsers.map((u) => (
+              <div className="roster-row" key={u.email} style={{ justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span className="num" style={{ width: "auto", fontSize: "11px", background: u.role === "admin" ? "#fff1e5" : "#edf3f0", color: u.role === "admin" ? "#c85a28" : "var(--green)", border: u.role === "admin" ? "1px solid #f6cfb8" : "1px solid var(--mint)", padding: "2px 6px", borderRadius: "4px", fontWeight: "800" }}>{u.role === "admin" ? "管理員" : "使用者"}</span>
+                  <span style={{ fontWeight: "700" }}>{u.email}</span>
+                </div>
+                {u.email !== adminEmail.toLowerCase() && (
+                  <button className="delete" onClick={() => handleDeleteUser(u.email)} style={{ color: "#b66b59", fontWeight: "800" }}>移除</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <aside className="card">
+          <h2>修改管理員密碼</h2>
+          <p>更改管理員帳號 ({currentUser?.email}) 的登入密碼。</p>
+          <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
+            <label className="field" style={{ margin: "0" }}>
+              <span>目前密碼</span>
+              <input type="password" value={changePasswordOld} onChange={e => setChangePasswordOld(e.target.value)} required placeholder="請輸入目前密碼" style={{ border: "0", background: "transparent", font: "inherit", color: "var(--ink)", fontWeight: "700" }} />
+            </label>
+            <label className="field" style={{ margin: "0" }}>
+              <span>新密碼</span>
+              <input type="password" value={changePasswordNew} onChange={e => setChangePasswordNew(e.target.value)} required placeholder="新密碼 (至少 4 位)" style={{ border: "0", background: "transparent", font: "inherit", color: "var(--ink)", fontWeight: "700" }} />
+            </label>
+            <button type="submit" style={{ border: "0", background: "var(--orange)", color: "#fff", borderRadius: "8px", padding: "11px", fontWeight: "800", cursor: "pointer", marginTop: "8px" }}>確認修改</button>
+          </form>
+        </aside>
+      </div>
     </section>}
   </main>;
 }
