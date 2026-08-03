@@ -3,6 +3,7 @@ export type ChatGPTUser = {
   displayName: string;
   email: string;
   fullName: string | null;
+  role?: string;
 };
 
 export const SIGN_IN_PATH = "/signin-with-chatgpt";

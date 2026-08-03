@@ -135,7 +135,8 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   }
 
   const isAdmin = useMemo(() => {
-    return !!currentUser && currentUser.email.toLowerCase() === adminEmail.toLowerCase();
+    if (!currentUser) return false;
+    return currentUser.role === "admin" || currentUser.email.toLowerCase() === adminEmail.toLowerCase();
   }, [currentUser, adminEmail]);
 
   // Load allowed users list if logged in as admin
