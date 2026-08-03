@@ -1,4 +1,7 @@
-// Intentionally empty by default.
-// Add Drizzle tables here when the site actually needs a database.
-// See examples/d1/db/schema.ts for an opt-in example.
-export {};
+import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const allowedUsers = sqliteTable("allowed_users", {
+  email: text("email").primaryKey(), // lowercase email
+  role: text("role").notNull().default("viewer"), // 'admin' | 'viewer'
+  password: text("password"), // Only used for admins, plain text or hash
+});

@@ -40,10 +40,10 @@ interface LunchAppProps {
 }
 
 export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
-  // Auth state - if server provided a real user, use that; otherwise check localStorage
   const [currentUser, setCurrentUser] = useState<ChatGPTUser | null>(initialUser);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [showPasswordInput, setShowPasswordInput] = useState(false);
   const [loginError, setLoginError] = useState("");
 
   const [tab, setTab] = useState<"orders"|"roster"|"shops">("orders");
@@ -57,7 +57,14 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   const [notice, setNotice] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
 
-  // On mount: if server didn't provide a real user, restore from localStorage (dev session)
+  // Allowed users from database (for admin UI)
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+  const [newAllowedEmail, setNewAllowedEmail] = useState("");
+  const [newAllowedRole, setNewAllowedRole] = useState<"viewer" | "admin">("viewer");
+  const [changePasswordOld, setChangePasswordOld] = useState("");
+  const [changePasswordNew, setChangePasswordNew] = useState("");
+
+  // On mount: restore from localStorage
   useEffect(() => {
     if (!initialUser) {
       try {
@@ -90,6 +97,22 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     return !!currentUser && currentUser.email.toLowerCase() === adminEmail.toLowerCase();
   }, [currentUser, adminEmail]);
 
+  // Load allowed users list if logged in as admin
+  useEffect(() => {
+    if (isAdmin && currentUser) {
+      fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list-users", requesterEmail: currentUser.email }),
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.users) setDbUsers(data.users);
+        })
+        .catch(() => {});
+    }
+  }, [isAdmin, currentUser]);
+
   const duty = useMemo(() => {
     if (!settingsReady) return "載入中…";
     if (!people.length) return "尚未設定";
@@ -114,42 +137,133 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   const total = orders.reduce((n, o) => n + o.qty, 0);
 
   // ──── Login logic ────
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     const email = loginEmail.trim().toLowerCase();
-    const isAdminAttempt = email === adminEmail.toLowerCase();
 
     if (!email.includes("@")) {
       setLoginError("請輸入有效的 Email 格式");
       return;
     }
 
-    // Admin must provide password
-    if (isAdminAttempt) {
-      if (loginPassword !== "taichi2026") {
-        setLoginError("❌ 管理員密碼錯誤");
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "login",
+          email,
+          password: loginPassword,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.requirePassword) {
+          setShowPasswordInput(true);
+          setLoginError("");
+        } else {
+          setLoginError(data.error || "登入失敗");
+        }
         return;
       }
-    }
 
-    setLoginError("");
-    const user: ChatGPTUser = {
-      userId: email,
-      email: loginEmail.trim(),
-      displayName: loginEmail.trim(),
-      fullName: null,
-    };
-    localStorage.setItem("session_user", JSON.stringify(user));
-    setCurrentUser(user);
+      setLoginError("");
+      localStorage.setItem("session_user", JSON.stringify(data.user));
+      setCurrentUser(data.user);
+    } catch (err) {
+      setLoginError("登入系統時發生連線錯誤，請確認資料庫已建立。");
+    }
   }
 
   function handleLogout() {
     localStorage.removeItem("session_user");
     setCurrentUser(null);
-    setLoginEmail(""); setLoginPassword(""); setLoginError("");
+    setLoginEmail(""); setLoginPassword(""); setLoginError(""); setShowPasswordInput(false);
     // If authenticated via the platform (real OAuth), redirect to sign-out
     if (initialUser) {
       window.location.href = chatGPTSignOutPath("/");
+    }
+  }
+
+  async function handleAddUser(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentUser) return;
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add-user",
+          requesterEmail: currentUser.email,
+          email: newAllowedEmail,
+          role: newAllowedRole,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error);
+      } else {
+        setDbUsers(data.users || []);
+        setNewAllowedEmail("");
+        setNotice("已成功新增使用者");
+        setTimeout(() => setNotice(""), 2000);
+      }
+    } catch (err) {
+      alert("連線錯誤，無法新增帳號。");
+    }
+  }
+
+  async function handleDeleteUser(emailToDelete: string) {
+    if (!currentUser) return;
+    if (!window.confirm(`確定要將 ${emailToDelete} 從存取清單中移除嗎？`)) return;
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete-user",
+          requesterEmail: currentUser.email,
+          emailToDelete,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error);
+      } else {
+        setDbUsers(data.users || []);
+        setNotice("已成功移除使用者");
+        setTimeout(() => setNotice(""), 2000);
+      }
+    } catch (err) {
+      alert("連線錯誤，無法刪除帳號。");
+    }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentUser) return;
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "change-password",
+          adminEmail: currentUser.email,
+          oldPassword: changePasswordOld,
+          newPassword: changePasswordNew,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error);
+      } else {
+        alert("密碼修改成功！");
+        setChangePasswordOld("");
+        setChangePasswordNew("");
+      }
+    } catch (err) {
+      alert("連線錯誤，無法修改密碼。");
     }
   }
 
@@ -226,7 +340,6 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
 
   // ──── LOGIN PAGE ────
   if (!currentUser) {
-    const isAdminEmail = loginEmail.trim().toLowerCase() === adminEmail.toLowerCase();
     return (
       <main className="login-wrapper">
         <div className="login-card">
@@ -248,15 +361,16 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
               />
             </label>
 
-            {isAdminEmail && (
+            {showPasswordInput && (
               <label className="login-field admin-pwd-field">
                 <span>管理員密碼 <small>(管理員帳號需要)</small></span>
                 <input
                   type="password"
                   value={loginPassword}
                   onChange={e => { setLoginPassword(e.target.value); setLoginError(""); }}
-                  placeholder="請輸入管理員密碼"
+                  placeholder="請輸入密碼"
                   autoComplete="current-password"
+                  required
                 />
               </label>
             )}
@@ -403,6 +517,60 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
             ))}
         </aside>
       </div>
+
+      {isAdmin && (
+        <div className="settings-grid admin-users-section" style={{ marginTop: "24px" }}>
+          <section className="card">
+            <div className="card-head">
+              <div><h2>系統存取名單 (Email 限制)</h2><p>只有名單內的使用者才可以登入系統</p></div>
+            </div>
+            <form onSubmit={handleAddUser} className="skip-range-add" style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr auto", gap: "9px", margin: "0 0 20px" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                <span style={{ fontSize: "11px", fontWeight: "bold", color: "var(--muted)" }}>Email 帳號</span>
+                <input type="email" value={newAllowedEmail} onChange={e => setNewAllowedEmail(e.target.value)} placeholder="user@gmail.com" required style={{ border: "1px solid var(--line)", borderRadius: "8px", padding: "10px" }} />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                <span style={{ fontSize: "11px", fontWeight: "bold", color: "var(--muted)" }}>身分角色</span>
+                <select value={newAllowedRole} onChange={e => setNewAllowedRole(e.target.value as any)} style={{ border: "1px solid var(--line)", borderRadius: "8px", padding: "10px", height: "41px", background: "#fff", font: "inherit", fontWeight: "700" }}>
+                  <option value="viewer">一般使用者 (唯讀)</option>
+                  <option value="admin">管理員 (可修改)</option>
+                </select>
+              </label>
+              <button type="submit" style={{ alignSelf: "flex-end", height: "41px", border: "0", background: "var(--green)", color: "#fff", borderRadius: "8px", padding: "0 18px", fontWeight: "800", cursor: "pointer" }}>新增</button>
+            </form>
+            
+            <div className="roster" style={{ maxHeight: "250px", overflowY: "auto" }}>
+              {dbUsers.map((u) => (
+                <div className="roster-row" key={u.email} style={{ justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span className="num" style={{ width: "auto", fontSize: "11px", background: u.role === "admin" ? "#fff1e5" : "#edf3f0", color: u.role === "admin" ? "#c85a28" : "var(--green)", border: u.role === "admin" ? "1px solid #f6cfb8" : "1px solid var(--mint)", padding: "2px 6px", borderRadius: "4px", fontWeight: "800" }}>{u.role === "admin" ? "管理員" : "使用者"}</span>
+                    <span style={{ fontWeight: "700" }}>{u.email}</span>
+                  </div>
+                  {u.email !== adminEmail.toLowerCase() && (
+                    <button className="delete" onClick={() => handleDeleteUser(u.email)} style={{ color: "#b66b59", fontWeight: "800" }}>移除</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <aside className="card">
+            <h2>修改管理員密碼</h2>
+            <p>更改管理員帳號 ({adminEmail}) 的登入密碼。</p>
+            <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
+              <label className="field" style={{ margin: "0" }}>
+                <span>目前密碼</span>
+                <input type="password" value={changePasswordOld} onChange={e => setChangePasswordOld(e.target.value)} required placeholder="請輸入目前密碼" style={{ border: "0", background: "transparent", font: "inherit", color: "var(--ink)", fontWeight: "700" }} />
+              </label>
+              <label className="field" style={{ margin: "0" }}>
+                <span>新密碼</span>
+                <input type="password" value={changePasswordNew} onChange={e => setChangePasswordNew(e.target.value)} required placeholder="新密碼 (至少 4 位)" style={{ border: "0", background: "transparent", font: "inherit", color: "var(--ink)", fontWeight: "700" }} />
+              </label>
+              <button type="submit" style={{ border: "0", background: "var(--orange)", color: "#fff", borderRadius: "8px", padding: "11px", fontWeight: "800", cursor: "pointer", marginTop: "8px" }}>確認修改</button>
+            </form>
+          </aside>
+        </div>
+      )}
     </section>}
 
     {tab === "shops" && <section className="page narrow">
