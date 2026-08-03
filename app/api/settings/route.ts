@@ -21,6 +21,7 @@ async function ensureDefaultSettings(db: ReturnType<typeof getDb>) {
         shops: JSON.stringify(INITIAL_SHOPS),
         skipRanges: JSON.stringify(DEFAULT_SKIP_RANGES),
         anchor: DEFAULT_ANCHOR,
+        holidays: JSON.stringify([]),
       });
     }
   } catch (err) {
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
       shops: JSON.parse(settings.shops),
       skipRanges: JSON.parse(settings.skipRanges),
       anchor: settings.anchor,
+      holidays: JSON.parse(settings.holidays ?? "[]"),
     });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unexpected error" }, { status: 500 });
@@ -54,7 +56,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { requesterEmail, people, shops, skipRanges, anchor } = body;
+    const { requesterEmail, people, shops, skipRanges, anchor, holidays } = body;
 
     await initDb();
     const db = getDb();
@@ -78,6 +80,7 @@ export async function POST(request: Request) {
         shops: JSON.stringify(shops),
         skipRanges: JSON.stringify(skipRanges),
         anchor: anchor,
+        ...(holidays !== undefined ? { holidays: JSON.stringify(holidays) } : {}),
       })
       .where(eq(systemSettings.id, 1));
 

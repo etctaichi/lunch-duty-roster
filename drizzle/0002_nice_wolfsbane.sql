@@ -1,0 +1,1 @@
+ALTER TABLE `system_settings` ADD `holidays` text DEFAULT '[]' NOT NULL;

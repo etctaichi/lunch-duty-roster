@@ -8,6 +8,26 @@ type Order = { id: string; name: string; shop: string; meal: string; qty: number
 type Person = { id: string; name: string };
 type SkipRange = { id: string; start: string; end: string };
 
+// ── .ics parser (lightweight, no external lib) ──────────────────────────────
+function parseICS(text: string): string[] {
+  const dates: string[] = [];
+  const events = text.split("BEGIN:VEVENT");
+  for (const ev of events.slice(1)) {
+    // Match DTSTART;VALUE=DATE:20260228  OR  DTSTART:20260228
+    const m = ev.match(/DTSTART(?:;[^:]*)?:(\d{8})/);
+    if (!m) continue;
+    const raw = m[1]; // e.g. "20260228"
+    const yyyy = raw.slice(0, 4);
+    const mm   = raw.slice(4, 6);
+    const dd   = raw.slice(6, 8);
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    // Skip weekends (Saturday=6, Sunday=0)
+    const dow = new Date(`${dateStr}T12:00:00`).getDay();
+    if (dow !== 0 && dow !== 6) dates.push(dateStr);
+  }
+  return [...new Set(dates)].sort();
+}
+
 const initialPeople: Person[] = [
   "林 詩 怡","陳 怡 樺","游 家 林","王 煜 詔","林 賢 明","陳 恩 平","汪 柏 州","蔡 哲 霖","吳 建 成","李 權 峻","賀 冠 傑","許 峻 銘","王 介 武","陳 英 孜","王 鈺 棋","邱 宇 昕"
 ].map((name, i) => ({ id: String(i + 1), name }));
@@ -54,6 +74,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   const [shops, setShops] = useState(initialShops);
   const [skipRanges, setSkipRanges] = useState<SkipRange[]>(defaultSkipRanges);
   const [anchor, setAnchor] = useState("2025-10-27");
+  const [holidays, setHolidays] = useState<string[]>([]); // "YYYY-MM-DD" list from .ics
   const [notice, setNotice] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
 
@@ -83,6 +104,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
           setShops(data.shops);
           setSkipRanges(data.skipRanges);
           setAnchor(data.anchor);
+          if (Array.isArray(data.holidays)) setHolidays(data.holidays);
         }
         setSettingsReady(true);
       })
@@ -100,7 +122,13 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
       });
   }, []);
 
-  async function saveAllSettings(updatedPeople = people, updatedShops = shops, updatedSkip = skipRanges, updatedAnchor = anchor) {
+  async function saveAllSettings(
+    updatedPeople = people,
+    updatedShops = shops,
+    updatedSkip = skipRanges,
+    updatedAnchor = anchor,
+    updatedHolidays = holidays
+  ) {
     if (!currentUser || !isAdmin) return;
     try {
       const res = await fetch("/api/settings", {
@@ -112,6 +140,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
           shops: updatedShops,
           skipRanges: updatedSkip,
           anchor: updatedAnchor,
+          holidays: updatedHolidays,
         }),
       });
       const data = await res.json();
@@ -128,6 +157,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
         shops: updatedShops,
         skipRanges: updatedSkip,
         anchor: updatedAnchor,
+        holidays: updatedHolidays,
       }));
       setNotice("已暫存至本地瀏覽器");
       setTimeout(() => setNotice(""), 2000);
@@ -155,18 +185,21 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     }
   }, [isAdmin, currentUser]);
 
+  const holidaySet = useMemo(() => new Set(holidays), [holidays]);
+
   const duty = useMemo(() => {
     if (!settingsReady) return "載入中…";
     if (!people.length) return "尚未設定";
     const target = mondayOf(new Date(date + "T12:00:00"));
     const start = mondayOf(new Date(anchor + "T12:00:00"));
     
-    // Find all weeks that are completely skipped (all 5 working days fall inside skipRanges)
+    // Find all weeks that are completely skipped:
+    // A week is skipped if ALL 5 working days (Mon-Fri) are either in
+    // a skipRange OR are in the imported holiday list.
     const skippedMondays = new Set<string>();
     const minTime = Math.min(start.getTime(), target.getTime());
     const maxTime = Math.max(start.getTime(), target.getTime());
     let current = new Date(minTime);
-    // Scan from start to target (and a bit beyond to be safe)
     const limit = new Date(maxTime + 604800000);
 
     while (current <= limit) {
@@ -174,15 +207,14 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
       for (let i = 0; i < 5; i++) {
         const d = new Date(current.getTime() + i * 86400000);
         const dStr = ymd(d);
-        const insideRange = skipRanges.some(r => dStr >= r.start && dStr <= r.end);
-        if (!insideRange) {
+        const inSkipRange = skipRanges.some(r => dStr >= r.start && dStr <= r.end);
+        const inHoliday   = holidaySet.has(dStr);
+        if (!inSkipRange && !inHoliday) {
           isFullySkipped = false;
           break;
         }
       }
-      if (isFullySkipped) {
-        skippedMondays.add(ymd(current));
-      }
+      if (isFullySkipped) skippedMondays.add(ymd(current));
       current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 7);
     }
 
@@ -190,7 +222,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     let weeks = Math.floor((target.getTime() - start.getTime()) / 604800000);
     weeks -= [...skippedMondays].filter(x => { const m = new Date(x + "T12:00:00"); return m >= start && m < target; }).length;
     return people[((weeks % people.length) + people.length) % people.length]?.name || "尚未設定";
-  }, [date, people, skipRanges, anchor, settingsReady]);
+  }, [date, people, skipRanges, holidays, holidaySet, anchor, settingsReady]);
 
   const shopSummary = useMemo(() => orders.reduce<Record<string, number>>((a, o) => (a[o.shop] = (a[o.shop] || 0) + o.qty, a), {}), [orders]);
   const total = orders.reduce((n, o) => n + o.qty, 0);
@@ -393,9 +425,35 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   async function resetLocalSettings() {
     if (!isAdmin) return;
     if (!window.confirm("確定要將所有人名、店家、起算日與休假區間還原為系統預設值嗎？")) return;
-    setPeople(initialPeople); setShops(initialShops); setSkipRanges(defaultSkipRanges); setAnchor("2025-10-27");
-    await saveAllSettings(initialPeople, initialShops, defaultSkipRanges, "2025-10-27");
+    setPeople(initialPeople); setShops(initialShops); setSkipRanges(defaultSkipRanges); setAnchor("2025-10-27"); setHolidays([]);
+    await saveAllSettings(initialPeople, initialShops, defaultSkipRanges, "2025-10-27", []);
     setNotice("已還原為系統預設設定"); setTimeout(() => setNotice(""), 3000);
+  }
+
+  // ── .ics file upload handler ────────────────────────────────────────────────
+  function handleICSUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const text = ev.target?.result as string;
+      const parsed = parseICS(text);
+      setHolidays(parsed);
+      await saveAllSettings(people, shops, skipRanges, anchor, parsed);
+      setNotice(`已匯入 ${parsed.length} 個假日（不含週末）`);
+      setTimeout(() => setNotice(""), 3000);
+    };
+    reader.readAsText(file, "UTF-8");
+    // Reset input so same file can be re-uploaded
+    e.target.value = "";
+  }
+
+  async function clearHolidays() {
+    if (!window.confirm("確定要清除所有匯入的假日資料嗎？")) return;
+    setHolidays([]);
+    await saveAllSettings(people, shops, skipRanges, anchor, []);
+    setNotice("已清除假日資料");
+    setTimeout(() => setNotice(""), 2000);
   }
 
   // ──── LOGIN PAGE ────
@@ -575,7 +633,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
                 const end = s.value <= e.value ? e.value : s.value;
                 const next = [...skipRanges, { id: crypto.randomUUID(), start, end }];
                 setSkipRanges(next);
-                saveAllSettings(people, shops, next, anchor);
+                saveAllSettings(people, shops, next, anchor, holidays);
                 s.value = ""; e.value = "";
               }
             }}>加入區間</button>
@@ -588,10 +646,87 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
                 {isAdmin && <button onClick={() => {
                   const next = skipRanges.filter(v => v.id !== x.id);
                   setSkipRanges(next);
-                  saveAllSettings(people, shops, next, anchor);
+                  saveAllSettings(people, shops, next, anchor, holidays);
                 }}>移除</button>}
               </div>
             ))}
+
+          {/* ── 國定假日 .ics 匯入 ────────────────────── */}
+          <div style={{ marginTop: "28px", paddingTop: "20px", borderTop: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "800", color: "var(--ink)" }}>國定假日檔案</h3>
+                <p style={{ margin: "3px 0 0", fontSize: "12px", color: "var(--muted)" }}>
+                  上傳人事行政局 .ics 假日檔，假日將標示灰色；整週皆假日則自動跳過輪值。
+                </p>
+              </div>
+              {isAdmin && holidays.length > 0 && (
+                <button className="text-btn" style={{ color: "#b66b59", fontSize: "12px" }} onClick={clearHolidays}>清除</button>
+              )}
+            </div>
+
+            {isAdmin && (
+              <label style={{
+                display: "flex", alignItems: "center", gap: "10px",
+                padding: "10px 14px", border: "1.5px dashed var(--line)",
+                borderRadius: "10px", cursor: "pointer", marginBottom: "12px",
+                fontSize: "13px", color: "var(--muted)", fontWeight: "700",
+                transition: "border-color .2s",
+              }}>
+                <span style={{ fontSize: "20px" }}>📅</span>
+                <span>{holidays.length > 0 ? `已匯入 ${holidays.length} 個假日，可重新上傳覆蓋` : "點此選擇 .ics 檔案上傳"}</span>
+                <input
+                  type="file"
+                  accept=".ics,text/calendar"
+                  style={{ display: "none" }}
+                  onChange={handleICSUpload}
+                />
+              </label>
+            )}
+
+            {holidays.length > 0 && (
+              <div style={{ maxHeight: "180px", overflowY: "auto", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {(() => {
+                  // Group holidays by year-month for readability
+                  const grouped: Record<string, string[]> = {};
+                  for (const d of holidays) {
+                    const ym = d.slice(0, 7);
+                    if (!grouped[ym]) grouped[ym] = [];
+                    grouped[ym].push(d);
+                  }
+                  return Object.entries(grouped).map(([ym, days]) => (
+                    <div key={ym} style={{ width: "100%" }}>
+                      <div style={{ fontSize: "11px", fontWeight: "800", color: "var(--muted)", marginBottom: "4px" }}>
+                        {ym.replace("-", " 年 ").replace(/-(\d+)/, (_, m) => ` ${parseInt(m)} 月`)}
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                        {days.map(d => {
+                          const dateObj = new Date(d + "T12:00:00");
+                          const dow = "日一二三四五六"[dateObj.getDay()];
+                          // Check if whole week is skipped due to this day
+                          const mon = mondayOf(dateObj);
+                          const weekFullHoliday = Array.from({ length: 5 }, (_, i) => {
+                            const wd = ymd(new Date(mon.getTime() + i * 86400000));
+                            return holidaySet.has(wd) || skipRanges.some(r => wd >= r.start && wd <= r.end);
+                          }).every(Boolean);
+                          return (
+                            <span key={d} style={{
+                              padding: "2px 7px", borderRadius: "5px", fontSize: "12px", fontWeight: "700",
+                              background: weekFullHoliday ? "#fde8e8" : "#f0f0f0",
+                              color: weekFullHoliday ? "#c0392b" : "#666",
+                              border: weekFullHoliday ? "1px solid #f5c6c6" : "1px solid #e0e0e0",
+                            }}>
+                              {parseInt(d.slice(8))}日（{dow}）{weekFullHoliday ? " ✕" : ""}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
         </aside>
       </div>
     </section>}

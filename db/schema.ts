@@ -12,4 +12,5 @@ export const systemSettings = sqliteTable("system_settings", {
   shops: text("shops").notNull(), // JSON string
   skipRanges: text("skip_ranges").notNull(), // JSON string
   anchor: text("anchor").notNull(),
+  holidays: text("holidays").notNull().default("[]"), // JSON string: string[] of "YYYY-MM-DD"
 });
