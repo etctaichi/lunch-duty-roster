@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { chatGPTSignInPath, chatGPTSignOutPath, type ChatGPTUser } from "./chatgpt-auth-utils";
+import { chatGPTSignOutPath, type ChatGPTUser } from "./chatgpt-auth-utils";
+
 
 type Order = { id: string; name: string; shop: string; meal: string; qty: number };
 type Person = { id: string; name: string };
@@ -35,13 +36,13 @@ interface LunchAppProps {
   adminEmail: string;
 }
 
-const LOCAL_ADMIN_PASSCODE = "taichi2026";
-
 export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
+  // Auth state - if server provided a real user, use that; otherwise check localStorage
   const [currentUser, setCurrentUser] = useState<ChatGPTUser | null>(initialUser);
-  const [customInputEmail, setCustomInputEmail] = useState(adminEmail);
-  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
+
   const [tab, setTab] = useState<"orders"|"roster"|"shops">("orders");
   const [date, setDate] = useState(ymd(new Date()));
   const [raw, setRaw] = useState(sample);
@@ -53,13 +54,12 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   const [notice, setNotice] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
 
+  // On mount: if server didn't provide a real user, restore from localStorage (dev session)
   useEffect(() => {
     if (!initialUser) {
       try {
-        const savedDevUser = localStorage.getItem("dev_mock_user");
-        if (savedDevUser) {
-          setCurrentUser(JSON.parse(savedDevUser));
-        }
+        const saved = localStorage.getItem("session_user");
+        if (saved) setCurrentUser(JSON.parse(saved));
       } catch {}
     }
   }, [initialUser]);
@@ -84,8 +84,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   }, [people, shops, skipRanges, anchor, settingsReady]);
 
   const isAdmin = useMemo(() => {
-    if (!currentUser) return false;
-    return currentUser.email.toLowerCase() === adminEmail.toLowerCase();
+    return !!currentUser && currentUser.email.toLowerCase() === adminEmail.toLowerCase();
   }, [currentUser, adminEmail]);
 
   const duty = useMemo(() => {
@@ -110,6 +109,46 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
 
   const shopSummary = useMemo(() => orders.reduce<Record<string, number>>((a, o) => (a[o.shop] = (a[o.shop] || 0) + o.qty, a), {}), [orders]);
   const total = orders.reduce((n, o) => n + o.qty, 0);
+
+  // ──── Login logic ────
+  function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    const email = loginEmail.trim().toLowerCase();
+    const isAdminAttempt = email === adminEmail.toLowerCase();
+
+    if (!email.includes("@")) {
+      setLoginError("請輸入有效的 Email 格式");
+      return;
+    }
+
+    // Admin must provide password
+    if (isAdminAttempt) {
+      if (loginPassword !== "taichi2026") {
+        setLoginError("❌ 管理員密碼錯誤");
+        return;
+      }
+    }
+
+    setLoginError("");
+    const user: ChatGPTUser = {
+      userId: email,
+      email: loginEmail.trim(),
+      displayName: loginEmail.trim(),
+      fullName: null,
+    };
+    localStorage.setItem("session_user", JSON.stringify(user));
+    setCurrentUser(user);
+  }
+
+  function handleLogout() {
+    localStorage.removeItem("session_user");
+    setCurrentUser(null);
+    setLoginEmail(""); setLoginPassword(""); setLoginError("");
+    // If authenticated via the platform (real OAuth), redirect to sign-out
+    if (initialUser) {
+      window.location.href = chatGPTSignOutPath("/");
+    }
+  }
 
   function parse() {
     const lines = raw.trim().split(/\r?\n/).filter(Boolean);
@@ -182,102 +221,58 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     setNotice("已重設這台裝置的本機設定"); setTimeout(() => setNotice(""), 3000);
   }
 
-  function handleDevMockLogin(email: string, passwordAttempt?: string) {
-    if (email.toLowerCase() === adminEmail.toLowerCase()) {
-      const pwd = passwordAttempt !== undefined ? passwordAttempt : adminPasswordInput;
-      if (pwd !== LOCAL_ADMIN_PASSCODE) {
-        setLoginError(`❌ 管理員密碼錯誤！請輸入正確密碼 (預設: ${LOCAL_ADMIN_PASSCODE})`);
-        return;
-      }
-    }
-    setLoginError("");
-    const userObj: ChatGPTUser = {
-      userId: `dev-${email}`,
-      displayName: email,
-      email: email,
-      fullName: email
-    };
-    localStorage.setItem("dev_mock_user", JSON.stringify(userObj));
-    setCurrentUser(userObj);
-  }
-
-  function handleLogout() {
-    localStorage.removeItem("dev_mock_user");
-    setCurrentUser(null);
-    if (initialUser) {
-      window.location.href = chatGPTSignOutPath("/");
-    }
-  }
-
+  // ──── LOGIN PAGE ────
   if (!currentUser) {
-    const signInUrl = chatGPTSignInPath("/");
-    const isTargetingAdmin = customInputEmail.toLowerCase() === adminEmail.toLowerCase();
-
+    const isAdminEmail = loginEmail.trim().toLowerCase() === adminEmail.toLowerCase();
     return (
       <main className="login-wrapper">
         <div className="login-card">
           <div className="brandmark-lg">午</div>
           <h1>午餐小管家</h1>
-          <p className="subtitle">請登入 Email 帳號以存取訂餐統計與值日排班系統</p>
-          <div className="login-info">
-            <p>系統管理員：<code>{adminEmail}</code></p>
-          </div>
+          <p className="subtitle">輸入 Email 帳號登入，即可使用訂餐統計與值日排班功能</p>
 
-          <a href={signInUrl} className="login-btn">
-            🔑 使用 Email 帳號登入 (線上正式版 OAuth)
-          </a>
-
-          <div className="dev-login-box">
-            <div className="dev-divider"><span>或本地開發測試驗證登入</span></div>
+          <form className="login-form" onSubmit={handleLogin}>
             {loginError && <div className="login-error-msg">{loginError}</div>}
-            <div className="dev-form">
-              <label className="dev-field-label">測試 Email 帳號：</label>
+            <label className="login-field">
+              <span>Email 帳號</span>
               <input
                 type="email"
-                value={customInputEmail}
-                onChange={e => { setCustomInputEmail(e.target.value); setLoginError(""); }}
-                placeholder="輸入測試 Email 帳號"
-                className="dev-input"
+                value={loginEmail}
+                onChange={e => { setLoginEmail(e.target.value); setLoginError(""); }}
+                placeholder="請輸入 Email"
+                autoComplete="email"
+                required
               />
-              {isTargetingAdmin && (
-                <>
-                  <label className="dev-field-label">管理員驗證密碼 (預設: <code>{LOCAL_ADMIN_PASSCODE}</code>)：</label>
-                  <input
-                    type="password"
-                    value={adminPasswordInput}
-                    onChange={e => { setAdminPasswordInput(e.target.value); setLoginError(""); }}
-                    placeholder="請輸入管理員密碼"
-                    className="dev-input"
-                  />
-                </>
-              )}
-              <button
-                type="button"
-                className="dev-submit-btn"
-                onClick={() => customInputEmail && handleDevMockLogin(customInputEmail)}
-              >
-                💻 通過驗證登入
-              </button>
-            </div>
-            <div className="dev-quick-btns">
-              <button
-                type="button"
-                className="quick-btn user-quick"
-                onClick={() => handleDevMockLogin("user@example.com")}
-              >
-                👤 以一般使用者登入 (免密碼)
-              </button>
-            </div>
-          </div>
+            </label>
 
-          <p className="login-note">
-            已整合 Email 帳號與管理員密碼雙重驗證機制。
-          </p>
+            {isAdminEmail && (
+              <label className="login-field admin-pwd-field">
+                <span>管理員密碼 <small>(管理員帳號需要)</small></span>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={e => { setLoginPassword(e.target.value); setLoginError(""); }}
+                  placeholder="請輸入管理員密碼"
+                  autoComplete="current-password"
+                />
+              </label>
+            )}
+
+            <button type="submit" className="login-submit-btn">
+              登入系統
+            </button>
+          </form>
+
+          <div className="login-meta">
+            <p>管理員帳號：<code>{adminEmail}</code></p>
+            <p>一般使用者輸入 Email 即可直接登入</p>
+          </div>
         </div>
       </main>
     );
   }
 
+  // ──── MAIN APP ────
   return <main>
     <header className="topbar">
       <div className="brand"><span className="brandmark">午</span><span>午餐小管家</span></div>
@@ -288,27 +283,18 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
       </nav>
       <div className="admin">
         <span className="user-email">{currentUser.email}</span>
-        {isAdmin ? (
-          <span className="badge admin-badge">👑 管理員</span>
-        ) : (
-          <span className="badge user-badge">一般使用者</span>
-        )}
-        <button onClick={handleLogout} className="logout-btn" title="登出">登出</button>
+        {isAdmin
+          ? <span className="badge admin-badge">👑 管理員</span>
+          : <span className="badge user-badge">一般使用者</span>}
+        <button onClick={handleLogout} className="logout-btn">登出</button>
       </div>
     </header>
     {notice && <div className="toast">✓ {notice}</div>}
 
     {tab === "orders" && <section className="page">
       <div className="title-row">
-        <div>
-          <p className="eyebrow">DAILY LUNCH</p>
-          <h1>今日訂餐</h1>
-          <p className="subtitle">貼上 order 頁籤資料，系統會自動整理餐點與值日生。</p>
-        </div>
-        <label className="datebox">
-          <span>訂餐日期</span>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} />
-        </label>
+        <div><p className="eyebrow">DAILY LUNCH</p><h1>今日訂餐</h1><p className="subtitle">貼上 order 頁籤資料，系統會自動整理餐點與值日生。</p></div>
+        <label className="datebox"><span>訂餐日期</span><input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
       </div>
       <div className="workflow">
         <span className="on"><b>1</b> 貼上資料</span><i></i>
@@ -318,10 +304,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
       <div className="grid">
         <div className="card input-card">
           <div className="card-head">
-            <div>
-              <h2>貼上 order 資料</h2>
-              <p>直接從試算表複製整個資料區塊</p>
-            </div>
+            <div><h2>貼上 order 資料</h2><p>直接從試算表複製整個資料區塊</p></div>
             <button className="text-btn" onClick={() => setRaw(sample)}>填入範例</button>
           </div>
           <textarea aria-label="訂餐資料" value={raw} onChange={e => setRaw(e.target.value)} placeholder={'請貼上 order 頁籤內容\n工號　姓名　店名　餐名　數量'} />
@@ -333,10 +316,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
         </div>
         <aside className="duty-card">
           <p>本週值日生</p>
-          <div className="duty-name">
-            <span className="person-icon">人</span>
-            <strong>{duty.replaceAll(" ", "")}</strong>
-          </div>
+          <div className="duty-name"><span className="person-icon">人</span><strong>{duty.replaceAll(" ", "")}</strong></div>
           <div className="week">{labelDate(ymd(mondayOf(new Date(date + "T12:00:00"))))} 起</div>
           <p className="duty-note">每週一自動輪替，週一至週五由同一人值日。</p>
           <button className="outline" onClick={() => setTab("roster")}>查看排班設定</button>
@@ -345,10 +325,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
       {orders.length > 0 && <div className="result-grid">
         <section className="card results">
           <div className="card-head">
-            <div>
-              <p className="eyebrow">PREVIEW</p>
-              <h2>今日午餐・{labelDate(date)}</h2>
-            </div>
+            <div><p className="eyebrow">PREVIEW</p><h2>今日午餐・{labelDate(date)}</h2></div>
             <span className="count">{total} 份</span>
           </div>
           <div className="table-wrap">
@@ -372,49 +349,27 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
 
     {tab === "roster" && <section className="page narrow">
       <div className="title-row">
-        <div>
-          <p className="eyebrow">WEEKLY ROSTER</p>
-          <h1>值日排班</h1>
-          <p className="subtitle">輪值人員清單與休假區間管理。</p>
-        </div>
+        <div><p className="eyebrow">WEEKLY ROSTER</p><h1>值日排班</h1><p className="subtitle">輪值人員清單與休假區間管理。</p></div>
         {isAdmin && <button className="reset-btn" onClick={resetLocalSettings}>重設本機設定</button>}
       </div>
-      {!isAdmin && (
-        <div className="admin-lock-banner">
-          🔒 提示：排班順序與休假區間僅限管理員 (<strong>{adminEmail}</strong>) 修改，您目前為檢視模式。
-        </div>
-      )}
+      {!isAdmin && <div className="admin-lock-banner">🔒 值日排班僅限管理員 (<strong>{adminEmail}</strong>) 修改，您目前為檢視模式。</div>}
       <div className="settings-grid">
         <section className="card">
           <div className="card-head">
-            <div>
-              <h2>輪值順序</h2>
-              <p>每人輪值一週，從週一開始</p>
-            </div>
-            {isAdmin && (
-              <button className="text-btn" onClick={() => setPeople(p => [...p, { id: crypto.randomUUID(), name: "新同仁" }])}>＋ 新增人員</button>
-            )}
+            <div><h2>輪值順序</h2><p>每人輪值一週，從週一開始</p></div>
+            {isAdmin && <button className="text-btn" onClick={() => setPeople(p => [...p, { id: crypto.randomUUID(), name: "新同仁" }])}>＋ 新增人員</button>}
           </div>
-          <label className="field">
-            <span>輪值起算週一</span>
-            <input type="date" value={anchor} disabled={!isAdmin} onChange={e => setAnchor(e.target.value)} />
-          </label>
+          <label className="field"><span>輪值起算週一</span><input type="date" value={anchor} disabled={!isAdmin} onChange={e => setAnchor(e.target.value)} /></label>
           <div className="roster">
             {people.map((p, i) => (
               <div className="roster-row" key={p.id}>
                 <span className="num">{i + 1}</span>
-                <input
-                  value={p.name}
-                  disabled={!isAdmin}
-                  onChange={e => setPeople(a => a.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))}
-                />
-                {isAdmin && (
-                  <div>
-                    <button onClick={() => move(i, -1)} aria-label="往上">↑</button>
-                    <button onClick={() => move(i, 1)} aria-label="往下">↓</button>
-                    <button className="delete" onClick={() => setPeople(a => a.filter(x => x.id !== p.id))} aria-label="刪除">×</button>
-                  </div>
-                )}
+                <input value={p.name} disabled={!isAdmin} onChange={e => setPeople(a => a.map(x => x.id === p.id ? { ...x, name: e.target.value } : x))} />
+                {isAdmin && <div>
+                  <button onClick={() => move(i, -1)} aria-label="往上">↑</button>
+                  <button onClick={() => move(i, 1)} aria-label="往下">↓</button>
+                  <button className="delete" onClick={() => setPeople(a => a.filter(x => x.id !== p.id))} aria-label="刪除">×</button>
+                </div>}
               </div>
             ))}
           </div>
@@ -422,72 +377,47 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
         <aside className="card">
           <h2>跳過日期區間</h2>
           <p>設定春節或連續休假期間；跨到兩週時，兩週都會停止輪值且不重複計算。</p>
-          {isAdmin && (
-            <div className="skip-range-add">
-              <label><span>起始日</span><input type="date" id="skipStart" /></label>
-              <label><span>結束日</span><input type="date" id="skipEnd" /></label>
-              <button onClick={() => {
-                const s = document.getElementById("skipStart") as HTMLInputElement;
-                const e = document.getElementById("skipEnd") as HTMLInputElement;
-                if (s.value && e.value) {
-                  const start = s.value <= e.value ? s.value : e.value;
-                  const end = s.value <= e.value ? e.value : s.value;
-                  setSkipRanges(a => [...a, { id: crypto.randomUUID(), start, end }]);
-                  s.value = ""; e.value = "";
-                }
-              }}>加入區間</button>
-            </div>
-          )}
-          {skipRanges.length === 0 ? (
-            <div className="empty">目前沒有跳過日期</div>
-          ) : (
-            skipRanges.map(x => (
+          {isAdmin && <div className="skip-range-add">
+            <label><span>起始日</span><input type="date" id="skipStart" /></label>
+            <label><span>結束日</span><input type="date" id="skipEnd" /></label>
+            <button onClick={() => {
+              const s = document.getElementById("skipStart") as HTMLInputElement;
+              const e = document.getElementById("skipEnd") as HTMLInputElement;
+              if (s.value && e.value) {
+                const start = s.value <= e.value ? s.value : e.value;
+                const end = s.value <= e.value ? e.value : s.value;
+                setSkipRanges(a => [...a, { id: crypto.randomUUID(), start, end }]);
+                s.value = ""; e.value = "";
+              }
+            }}>加入區間</button>
+          </div>}
+          {skipRanges.length === 0
+            ? <div className="empty">目前沒有跳過日期</div>
+            : skipRanges.map(x => (
               <div className="skip-row" key={x.id}>
                 <span>{labelDate(x.start)} ～ {labelDate(x.end)}</span>
-                {isAdmin && (
-                  <button onClick={() => setSkipRanges(a => a.filter(v => v.id !== x.id))} className="delete">移除</button>
-                )}
+                {isAdmin && <button onClick={() => setSkipRanges(a => a.filter(v => v.id !== x.id))}>移除</button>}
               </div>
-            ))
-          )}
+            ))}
         </aside>
       </div>
     </section>}
 
     {tab === "shops" && <section className="page narrow">
       <div className="title-row">
-        <div>
-          <p className="eyebrow">VENDORS</p>
-          <h1>店家管理</h1>
-          <p className="subtitle">可辨識的常訂店家清單。</p>
-        </div>
+        <div><p className="eyebrow">VENDORS</p><h1>店家管理</h1><p className="subtitle">可辨識的常訂店家清單。</p></div>
       </div>
-      {!isAdmin && (
-        <div className="admin-lock-banner">
-          🔒 提示：店家清單僅限管理員 (<strong>{adminEmail}</strong>) 修改，您目前為檢視模式。
-        </div>
-      )}
+      {!isAdmin && <div className="admin-lock-banner">🔒 店家清單僅限管理員 (<strong>{adminEmail}</strong>) 修改，您目前為檢視模式。</div>}
       <section className="card shop-manager">
         <div className="card-head">
-          <div>
-            <h2>店家清單</h2>
-            <p>{shops.length} 間店家</p>
-          </div>
-          {isAdmin && (
-            <button className="text-btn" onClick={() => setShops(a => [...a, "新店家"])}>＋ 新增店家</button>
-          )}
+          <div><h2>店家清單</h2><p>{shops.length} 間店家</p></div>
+          {isAdmin && <button className="text-btn" onClick={() => setShops(a => [...a, "新店家"])}>＋ 新增店家</button>}
         </div>
         {shops.map((s, i) => (
           <div className="shop-edit" key={i}>
             <span className="shop-dot"></span>
-            <input
-              value={s}
-              disabled={!isAdmin}
-              onChange={e => setShops(a => a.map((x, j) => j === i ? e.target.value : x))}
-            />
-            {isAdmin && (
-              <button onClick={() => setShops(a => a.filter((_, j) => j !== i))} aria-label="刪除">刪除</button>
-            )}
+            <input value={s} disabled={!isAdmin} onChange={e => setShops(a => a.map((x, j) => j === i ? e.target.value : x))} />
+            {isAdmin && <button onClick={() => setShops(a => a.filter((_, j) => j !== i))}>刪除</button>}
           </div>
         ))}
       </section>
