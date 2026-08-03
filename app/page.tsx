@@ -124,6 +124,12 @@ export default function Home() {
     setNotice("已下載 LINE 表格圖片"); setTimeout(()=>setNotice(""),2500);
   }
   function move(i:number, dir:number){ const n=i+dir;if(n<0||n>=people.length)return;const next=[...people];[next[i],next[n]]=[next[n],next[i]];setPeople(next); }
+  function resetLocalSettings(){
+    if(!window.confirm("確定要清除這台裝置保存的名單、店家、起算日與休假區間嗎？")) return;
+    localStorage.removeItem("lunch-admin-settings-v1");
+    setPeople(initialPeople); setShops(initialShops); setSkipRanges([]); setAnchor("2025-10-27");
+    setNotice("已重設這台裝置的本機設定"); setTimeout(()=>setNotice(""),3000);
+  }
 
   return <main>
     <header className="topbar"><div className="brand"><span className="brandmark">午</span><span>午餐小管家</span></div><nav>
@@ -148,7 +154,7 @@ export default function Home() {
       <aside className="card summary"><p className="eyebrow">SHOP SUMMARY</p><h2>店家統計</h2>{Object.entries(shopSummary).map(([s,n])=><div className="sum-row" key={s}><span>{s}</span><strong>{n} 份</strong></div>)}<div className="total"><span>合計</span><strong>{total} 份</strong></div><button className="line-btn" onClick={downloadLineTable}>下載 LINE 表格圖片</button><button className="copy-btn" onClick={copyNotice}>複製純文字公告</button><p className="shot-tip">下載後可直接將 PNG 圖片傳到 LINE</p></aside></div>}
     </section>}
 
-    {tab==="roster" && <section className="page narrow"><div className="title-row"><div><p className="eyebrow">WEEKLY ROSTER</p><h1>值日排班</h1><p className="subtitle">拖曳概念改為明確的上下調整，手機也好操作。</p></div></div>
+    {tab==="roster" && <section className="page narrow"><div className="title-row"><div><p className="eyebrow">WEEKLY ROSTER</p><h1>值日排班</h1><p className="subtitle">拖曳概念改為明確的上下調整，手機也好操作。</p></div><button className="reset-btn" onClick={resetLocalSettings}>重設本機設定</button></div>
       <div className="settings-grid"><section className="card"><div className="card-head"><div><h2>輪值順序</h2><p>每人輪值一週，從週一開始</p></div><button className="text-btn" onClick={()=>setPeople(p=>[...p,{id:crypto.randomUUID(),name:"新同仁"}])}>＋ 新增人員</button></div>
       <label className="field"><span>輪值起算週一</span><input type="date" value={anchor} onChange={e=>setAnchor(e.target.value)}/></label>
       <div className="roster">{people.map((p,i)=><div className="roster-row" key={p.id}><span className="num">{i+1}</span><input value={p.name} onChange={e=>setPeople(a=>a.map(x=>x.id===p.id?{...x,name:e.target.value}:x))}/><div><button onClick={()=>move(i,-1)} aria-label="往上">↑</button><button onClick={()=>move(i,1)} aria-label="往下">↓</button><button className="delete" onClick={()=>setPeople(a=>a.filter(x=>x.id!==p.id))} aria-label="刪除">×</button></div></div>)}</div></section>
