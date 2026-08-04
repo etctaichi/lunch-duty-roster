@@ -374,7 +374,7 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
   }
 
   async function copyNotice() {
-    const details = orders.map(o => `${o.id}｜${o.name.replaceAll(" ", "")}｜${o.shop}｜${o.meal}${o.qty > 1 ? ` × ${o.qty}` : ""}`).join("\n");
+    const details = orders.map(o => `${o.name.replaceAll(" ", "")}｜${o.shop}｜${o.meal}${o.qty > 1 ? ` × ${o.qty}` : ""}`).join("\n");
     const sums = Object.entries(shopSummary).map(([s, n]) => `${s} ${n} 份`).join("、");
     await navigator.clipboard.writeText(`今日午餐 ${labelDate(date)}\n值日生：${duty}\n\n${details}\n\n店家統計：${sums}\n共 ${total} 份`);
     setNotice("已複製 LINE 公告");
@@ -395,15 +395,15 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
     c.font = '500 25px "Microsoft JhengHei", sans-serif'; c.fillText(labelDate(date), 40, 103);
     c.fillStyle = "#e88958"; c.fillRect(40, 126, 280, 5);
     c.fillStyle = "#dcebe6"; c.font = '700 27px "Microsoft JhengHei", sans-serif'; c.textAlign = "right"; c.fillText(`值日生｜${duty.replaceAll(" ", "")}`, 860, 92); c.textAlign = "left";
-    const xs = [32, 130, 250, 370, 804]; const heads = ["工號", "姓名", "店家", "餐點", "數量"];
+    const xs = [32, 170, 292, 804]; const heads = ["姓名", "店家", "餐點", "數量"];
     c.fillStyle = "#dcebe6"; c.fillRect(24, headerH + 12, width - 48, tableHeadH - 12);
     c.fillStyle = "#275f51"; c.font = '700 22px "Microsoft JhengHei", sans-serif'; heads.forEach((h, i) => c.fillText(h, xs[i] + 10, headerH + 44));
     orders.forEach((o, i) => {
       const y = headerH + tableHeadH + rowH * i; c.fillStyle = i % 2 === 0 ? "#ffffff" : "#f8faf8"; c.fillRect(24, y, width - 48, rowH);
       c.fillStyle = "#17342d"; c.font = '500 21px "Microsoft JhengHei", sans-serif';
-      c.fillText(o.id, xs[0] + 10, y + 43); c.fillText(o.name.replaceAll(" ", ""), xs[1] + 10, y + 43); c.fillText(o.shop, xs[2] + 10, y + 43); c.fillText(String(o.qty), xs[4] + 10, y + 43);
+      c.fillText(o.name.replaceAll(" ", ""), xs[0] + 10, y + 43); c.fillText(o.shop, xs[1] + 10, y + 43); c.fillText(String(o.qty), xs[3] + 10, y + 43);
       const first = o.meal.slice(0, 24), second = o.meal.length > 24 ? o.meal.slice(24, 46) + (o.meal.length > 46 ? "…" : "") : "";
-      c.fillText(first, xs[3] + 10, y + (second ? 30 : 43)); if (second) { c.font = '500 18px "Microsoft JhengHei", sans-serif'; c.fillText(second, xs[3] + 10, y + 57); }
+      c.fillText(first, xs[2] + 10, y + (second ? 30 : 43)); if (second) { c.font = '500 18px "Microsoft JhengHei", sans-serif'; c.fillText(second, xs[2] + 10, y + 57); }
       c.strokeStyle = "#dfe5df"; c.beginPath(); c.moveTo(24, y + rowH); c.lineTo(width - 24, y + rowH); c.stroke();
     });
     const sy = headerH + tableHeadH + rowH * orders.length;
@@ -564,8 +564,8 @@ export default function LunchApp({ initialUser, adminEmail }: LunchAppProps) {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>工號</th><th>姓名</th><th>店家</th><th>餐點</th><th>數量</th></tr></thead>
-              <tbody>{orders.map((o, i) => <tr key={i}><td>{o.id}</td><td>{o.name}</td><td><span className="shop-pill">{o.shop}</span></td><td>{o.meal}</td><td>{o.qty}</td></tr>)}</tbody>
+              <thead><tr><th>姓名</th><th>店家</th><th>餐點</th><th>數量</th></tr></thead>
+              <tbody>{orders.map((o, i) => <tr key={i}><td>{o.name}</td><td><span className="shop-pill">{o.shop}</span></td><td>{o.meal}</td><td>{o.qty}</td></tr>)}</tbody>
             </table>
           </div>
         </section>
